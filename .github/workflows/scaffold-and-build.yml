@@ -40,8 +40,37 @@ jobs:
       - name: Install project dependencies
         run: npm install
 
+      - name: Install shadcn utility dependency
+        run: npm install tailwind-merge
+
       - name: Add shadcn Base UI components
         run: npx --yes shadcn@latest add sidebar button input separator skeleton -y -o -s
+
+      - name: Add shadcn responsive hook
+        shell: bash
+        run: |
+          mkdir -p src/hooks
+          cat > src/hooks/use-mobile.ts <<'HOOK'
+          import * as React from "react"
+
+          const MOBILE_BREAKPOINT = 768
+
+          export function useIsMobile() {
+            const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
+
+            React.useEffect(() => {
+              const mediaQuery = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
+              const update = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+
+              mediaQuery.addEventListener("change", update)
+              update()
+
+              return () => mediaQuery.removeEventListener("change", update)
+            }, [])
+
+            return Boolean(isMobile)
+          }
+          HOOK
 
       - name: Add official Tiptap Simple Editor template
         env:
