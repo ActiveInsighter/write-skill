@@ -101,8 +101,6 @@ jobs:
               except OSError:
                   pass
 
-          # Compatibility for CLI versions that interpret the configured alias
-          # as a literal directory even when an explicit output path is supplied.
           literal_components = Path("@/components")
           if literal_components.exists():
               shutil.copytree(literal_components, Path("src/components"), dirs_exist_ok=True)
@@ -174,6 +172,17 @@ jobs:
           script.write_text(source, encoding="utf-8")
           PY
           node scripts/patch-tiptap.mjs
+
+      - name: Prepare TypeScript 6 configuration
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs")
+          const path = "tsconfig.app.json"
+          const config = JSON.parse(fs.readFileSync(path, "utf8"))
+          config.compilerOptions.ignoreDeprecations = "6.0"
+          fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`)
+          NODE
 
       - name: Build production bundle
         run: npm run build
