@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@base-ui/react": "^1.4.0",
+    "@base-ui/react": "^1.6.0",
     "@headless-tree/core": "1.7.0",
     "@headless-tree/react": "1.7.0",
     "@tiptap/extension-highlight": "3.29.0",
