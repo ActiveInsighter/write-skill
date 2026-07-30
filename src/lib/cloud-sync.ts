@@ -19,10 +19,6 @@ let syncInFlight = false
 let syncAgain = false
 let credentials: WorkspaceCredentials | null = null
 
-const setStatus = (
-  status: Parameters<typeof useWorkspaceStore.getState>[0] extends never ? never : never,
-) => status
-
 const scheduleSync = () => {
   if (!ready) return
   if (syncTimer) clearTimeout(syncTimer)
@@ -100,9 +96,7 @@ const syncWorkspace = async () => {
   const state = useWorkspaceStore.getState()
 
   try {
-    if (!credentials) {
-      credentials = loadWorkspaceCredentials()
-    }
+    if (!credentials) credentials = loadWorkspaceCredentials()
 
     if (!credentials) {
       await createWorkspaceFromLocalState()
