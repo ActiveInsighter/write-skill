@@ -35,7 +35,6 @@ jobs:
         uses: actions/github-script@v8
         env:
           STATUS_ISSUE_TITLE: Workflow run status
-          CURRENT_WORKFLOW_NAME: ${{ github.workflow }}
           CURRENT_RUN_ID: ${{ github.run_id }}
         with:
           github-token: ${{ github.token }}
@@ -43,8 +42,8 @@ jobs:
             const owner = context.repo.owner
             const repo = context.repo.repo
             const issueTitle = process.env.STATUS_ISSUE_TITLE
-            const currentWorkflowName = process.env.CURRENT_WORKFLOW_NAME
             const currentRunId = process.env.CURRENT_RUN_ID
+            const recorderWorkflowPath = ".github/workflows/run-status.yml"
 
             const { data } = await github.rest.actions.listWorkflowRunsForRepo({
               owner,
@@ -53,7 +52,7 @@ jobs:
             })
 
             const runs = data.workflow_runs
-              .filter((run) => run.name !== currentWorkflowName)
+              .filter((run) => run.path !== recorderWorkflowPath)
               .slice(0, 10)
 
             const statusIcon = (run) => {
@@ -73,7 +72,7 @@ jobs:
               const branch = run.head_branch ?? "—"
               const commit = run.head_sha ? run.head_sha.slice(0, 7) : "—"
               const updated = run.updated_at
-                ? new Date(run.updated_at).toISOString().replace("T", " ").replace(".000Z", " UTC")
+                ? new Date(run.updated_at).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC")
                 : "—"
 
               return [
@@ -96,7 +95,7 @@ jobs:
                 ].join("\n")
               : "No non-recorder workflow runs exist yet."
 
-            const refreshedAt = new Date().toISOString().replace("T", " ").replace(".000Z", " UTC")
+            const refreshedAt = new Date().toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC")
             const recorderUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${currentRunId}`
             const body = [
               "# Workflow run status",
