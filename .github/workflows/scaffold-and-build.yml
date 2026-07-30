@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, feat/document-editor-frontend, feat/cloudflare-worker-d1]
   pull_request:
-    branches: [main]
+    branches: [main, feat/document-editor-frontend]
   workflow_dispatch:
 
 permissions:
