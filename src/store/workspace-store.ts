@@ -259,8 +259,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       name: "write-skill-workspace-v1",
       version: 2,
       migrate: (persistedState) => ({
-        ...(persistedState as Partial<WorkspaceState>),
+        ...(persistedState as WorkspaceState),
         remoteRevision: null,
+        cloudStatus: "local",
+        cloudError: null,
       }),
       partialize: (state) => ({
         nodes: state.nodes,
