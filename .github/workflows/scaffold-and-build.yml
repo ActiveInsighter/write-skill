@@ -1,274 +1,36 @@
-name: Scaffold and verify frontend
+name: Verify frontend
 
 on:
+  push:
+    branches: [main, feat/document-editor-frontend]
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: frontend-${{ github.head_ref || github.ref }}
+  group: frontend-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
-      - name: Checkout feature branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
-          fetch-depth: 0
-
-      - name: Restore handwritten frontend source
-        shell: bash
-        run: |
-          set -euo pipefail
-          base64 --decode .scaffold/write-skill-source.tar.gz.b64 | tar -xz
-          rm -rf .scaffold
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
+          cache: npm
 
-      - name: Install project dependencies
-        run: npm install
-
-      - name: Install shadcn utility dependencies
-        run: npm install tailwind-merge tw-animate-css
-
-      - name: Add shadcn Base UI components
-        run: npx --yes shadcn@latest add sidebar button input separator skeleton -y -o -s
-
-      - name: Add shadcn responsive hook
-        shell: bash
-        run: |
-          mkdir -p src/hooks
-          cat > src/hooks/use-mobile.ts <<'HOOK'
-          import * as React from "react"
-
-          const MOBILE_BREAKPOINT = 768
-
-          export function useIsMobile() {
-            const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
-
-            React.useEffect(() => {
-              const mediaQuery = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-              const update = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-
-              mediaQuery.addEventListener("change", update)
-              update()
-
-              return () => mediaQuery.removeEventListener("change", update)
-            }, [])
-
-            return Boolean(isMobile)
-          }
-          HOOK
-
-      - name: Add official Tiptap Simple Editor template
-        env:
-          CI: "true"
-        shell: bash
-        run: |
-          python3 <<'PY'
-          import os
-          import pty
-          import select
-          import shutil
-          import signal
-          import sys
-          import time
-          from pathlib import Path
-
-          command = [
-              "npx",
-              "--yes",
-              "@tiptap/cli@latest",
-              "add",
-              "simple-editor",
-              "--path",
-              "src/components",
-              "-o",
-              "-s",
-          ]
-          interaction_deadline = time.monotonic() + 120
-
-          pid, fd = pty.fork()
-          if pid == 0:
-              os.execvp(command[0], command)
-
-          try:
-              while time.monotonic() < interaction_deadline:
-                  try:
-                      os.write(fd, b"\n")
-                  except OSError:
-                      pass
-
-                  readable, _, _ = select.select([fd], [], [], 0.25)
-                  if not readable:
-                      continue
-
-                  try:
-                      chunk = os.read(fd, 8192)
-                  except OSError:
-                      break
-                  if not chunk:
-                      break
-
-                  sys.stdout.buffer.write(chunk)
-                  sys.stdout.buffer.flush()
-          finally:
-              try:
-                  os.close(fd)
-              except OSError:
-                  pass
-
-          literal_components = Path("@/components")
-          if literal_components.exists():
-              shutil.copytree(literal_components, Path("src/components"), dirs_exist_ok=True)
-              shutil.rmtree(Path("@"))
-              print("Moved literal @/components output into src/components.")
-
-          matches = []
-          filesystem_deadline = time.monotonic() + 60
-          while time.monotonic() < filesystem_deadline:
-              matches = sorted(
-                  Path("src/components").rglob("simple-editor.tsx"),
-                  key=lambda item: (len(item.parts), item.as_posix()),
-              )
-              if matches:
-                  break
-              time.sleep(0.5)
-
-          try:
-              finished_pid, _ = os.waitpid(pid, os.WNOHANG)
-          except ChildProcessError:
-              finished_pid = pid
-
-          if not finished_pid:
-              try:
-                  os.killpg(pid, signal.SIGTERM)
-              except ProcessLookupError:
-                  pass
-              try:
-                  os.waitpid(pid, 0)
-              except ChildProcessError:
-                  pass
-
-          print("Generated Simple Editor candidates:")
-          for match in matches:
-              print(f"- {match}")
-
-          if not matches:
-              raise SystemExit("Tiptap CLI did not generate the Simple Editor template.")
-
-          actual = matches[0]
-          expected = Path("src/components/tiptap-templates/simple/simple-editor.tsx")
-          if actual != expected:
-              expected.parent.mkdir(parents=True, exist_ok=True)
-              module_path = actual.relative_to("src").with_suffix("").as_posix()
-              expected.write_text(
-                  f'export * from "@/{module_path}"\n',
-                  encoding="utf-8",
-              )
-              print(f"Created compatibility export: {expected} -> {actual}")
-
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
-              env_file.write(f"SIMPLE_EDITOR_PATH={actual.as_posix()}\n")
-
-          print(f"Official Simple Editor source is present: {actual}")
-          PY
-
-      - name: Connect Simple Editor to the workspace store
-        shell: bash
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          script = Path("scripts/patch-tiptap.mjs")
-          source = script.read_text(encoding="utf-8")
-          source = source.replace(
-              'const filePath = "src/components/tiptap-templates/simple/simple-editor.tsx"',
-              'const filePath = process.env.SIMPLE_EDITOR_PATH\nif (!filePath) throw new Error("SIMPLE_EDITOR_PATH is not set")',
-          )
-          script.write_text(source, encoding="utf-8")
-          PY
-          node scripts/patch-tiptap.mjs
-
-      - name: Prepare TypeScript 6 configuration
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require("node:fs")
-          const path = "tsconfig.app.json"
-          const config = JSON.parse(fs.readFileSync(path, "utf8"))
-          config.compilerOptions.ignoreDeprecations = "6.0"
-          fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`)
-          NODE
+      - name: Install dependencies
+        run: npm ci
 
       - name: Build production bundle
         run: npm run build
-
-      - name: Replace bootstrap workflow with permanent CI
-        shell: bash
-        run: |
-          cat > .github/workflows/scaffold-and-build.yml <<'WORKFLOW'
-          name: Verify frontend
-
-          on:
-            push:
-              branches: [main, feat/document-editor-frontend]
-            pull_request:
-              branches: [main]
-            workflow_dispatch:
-
-          permissions:
-            contents: read
-
-          concurrency:
-            group: frontend-${{ github.workflow }}-${{ github.ref }}
-            cancel-in-progress: true
-
-          jobs:
-            build:
-              runs-on: ubuntu-latest
-              timeout-minutes: 10
-              steps:
-                - name: Checkout repository
-                  uses: actions/checkout@v4
-
-                - name: Set up Node.js
-                  uses: actions/setup-node@v4
-                  with:
-                    node-version: 22
-                    cache: npm
-
-                - name: Install dependencies
-                  run: npm ci
-
-                - name: Build production bundle
-                  run: npm run build
-          WORKFLOW
-
-      - name: Commit verified source and generated components
-        if: github.event_name == 'pull_request'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git restore --source=HEAD -- .github/workflows/scaffold-and-build.yml
-          git add -A
-          if git diff --cached --quiet; then
-            echo "Generated sources are already committed."
-          else
-            git commit -m "feat: build document editor frontend"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
