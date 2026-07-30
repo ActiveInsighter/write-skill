@@ -1,0 +1,68 @@
+name: Scaffold and verify frontend
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: frontend-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Restore handwritten frontend source
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode .scaffold/write-skill-source.tar.gz.b64 | tar -xz
+          rm -rf .scaffold
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install project dependencies
+        run: npm install
+
+      - name: Add shadcn Base UI components
+        run: npx --yes shadcn@latest add sidebar button input separator skeleton -y -o -s
+
+      - name: Add official Tiptap Simple Editor template
+        run: npx --yes @tiptap/cli@latest add simple-editor -o -s
+
+      - name: Connect Simple Editor to the workspace store
+        run: node scripts/patch-tiptap.mjs
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Commit verified source and generated components
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Generated sources are already committed."
+          else
+            git commit -m "feat: build document editor frontend"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
