@@ -46,7 +46,17 @@ jobs:
       - name: Add official Tiptap Simple Editor template
         env:
           CI: "true"
-        run: printf '\n\n\n\n\n' | script -qefc "npx --yes @tiptap/cli@latest add simple-editor -o -s" /dev/null
+        shell: bash
+        run: |
+          set +e
+          timeout 50s bash -c 'printf "\n\n\n\n\n" | script -qefc "npx --yes @tiptap/cli@latest add simple-editor -o -s" /dev/null'
+          cli_status=$?
+          set -e
+          if [[ ! -f src/components/tiptap-templates/simple/simple-editor.tsx ]]; then
+            echo "Tiptap CLI did not generate the Simple Editor template (status: ${cli_status})."
+            exit "${cli_status}"
+          fi
+          echo "Official Simple Editor source is present."
 
       - name: Connect Simple Editor to the workspace store
         run: node scripts/patch-tiptap.mjs
