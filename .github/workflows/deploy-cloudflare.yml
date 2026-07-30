@@ -1,0 +1,73 @@
+name: Deploy Cloudflare
+
+on:
+  push:
+    branches: [main, feat/cloudflare-worker-d1]
+  pull_request:
+    branches: [main, feat/document-editor-frontend]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and build application
+        run: npm run build
+
+      - name: Prepare Cloudflare resources
+        id: cloudflare
+        run: npm run cf:prepare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Apply migrations and deploy Worker
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4"
+          preCommands: wrangler d1 migrations apply write-skill-db --remote --config wrangler.jsonc
+          command: deploy --config wrangler.jsonc
+
+      - name: Smoke test deployed Worker and D1
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: node scripts/smoke-test.mjs "$DEPLOYMENT_URL"
+
+      - name: Write deployment summary
+        if: always()
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+          DATABASE_ID: ${{ steps.cloudflare.outputs.database-id }}
+        run: |
+          {
+            echo "## Cloudflare deployment"
+            echo
+            echo "- Database: write-skill-db (${DATABASE_ID:-unknown})"
+            echo "- Worker: write-skill"
+            echo "- URL: ${DEPLOYMENT_URL:-see Wrangler output}"
+          } >> "$GITHUB_STEP_SUMMARY"

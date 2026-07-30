@@ -1,11 +1,23 @@
 import * as React from "react"
-import { Check, Cloud, MoreHorizontal, Share2, Sparkles } from "lucide-react"
+import {
+  Check,
+  CircleAlert,
+  Cloud,
+  CloudOff,
+  LoaderCircle,
+  MoreHorizontal,
+  Share2,
+  Sparkles,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { SimpleEditor } from "@/components/tiptap-templates/simple/simple-editor"
+import { retryCloudSync } from "@/lib/cloud-sync"
+import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store/workspace-store"
+import type { CloudSyncStatus } from "@/types/document"
 
 const formatSavedTime = (value: string | null) => {
   if (!value) return "Saved locally"
@@ -15,15 +27,34 @@ const formatSavedTime = (value: string | null) => {
   }).format(new Date(value))}`
 }
 
+const cloudStatusDetails: Record<
+  CloudSyncStatus,
+  { label: string; icon: typeof Cloud; className?: string }
+> = {
+  local: { label: "Local only", icon: CloudOff },
+  connecting: { label: "Connecting", icon: LoaderCircle },
+  syncing: { label: "Syncing", icon: LoaderCircle },
+  synced: { label: "Cloud synced", icon: Cloud, className: "text-emerald-600" },
+  offline: { label: "Offline", icon: CloudOff, className: "text-amber-600" },
+  conflict: { label: "Sync conflict", icon: CircleAlert, className: "text-amber-600" },
+  error: { label: "Sync error", icon: CircleAlert, className: "text-destructive" },
+}
+
 export function EditorWorkspace() {
   const activeDocumentId = useWorkspaceStore((state) => state.activeDocumentId)
   const nodes = useWorkspaceStore((state) => state.nodes)
   const lastSavedAt = useWorkspaceStore((state) => state.lastSavedAt)
+  const cloudStatus = useWorkspaceStore((state) => state.cloudStatus)
+  const cloudError = useWorkspaceStore((state) => state.cloudError)
+  const remoteRevision = useWorkspaceStore((state) => state.remoteRevision)
   const renameNode = useWorkspaceStore((state) => state.renameNode)
   const updateDocumentContent = useWorkspaceStore((state) => state.updateDocumentContent)
 
   const activeDocument = activeDocumentId ? nodes[activeDocumentId] : undefined
   const [title, setTitle] = React.useState(activeDocument?.name ?? "")
+  const cloudDetails = cloudStatusDetails[cloudStatus]
+  const CloudIcon = cloudDetails.icon
+  const isCloudBusy = cloudStatus === "connecting" || cloudStatus === "syncing"
 
   React.useEffect(() => {
     setTitle(activeDocument?.name ?? "")
@@ -79,10 +110,25 @@ export function EditorWorkspace() {
             <Check className="size-3.5 text-emerald-600" aria-hidden="true" />
             {formatSavedTime(lastSavedAt)}
           </span>
-          <span className="flex items-center gap-1.5 rounded-full border border-dashed border-border px-2.5 py-1 text-muted-foreground/70">
-            <Cloud className="size-3.5" aria-hidden="true" />
-            Offline
-          </span>
+          <button
+            type="button"
+            onClick={retryCloudSync}
+            title={
+              cloudError ??
+              (remoteRevision ? `Cloud revision ${remoteRevision}` : "Cloud workspace not created yet")
+            }
+            className="flex items-center gap-1.5 rounded-full border border-border/75 bg-background/75 px-2.5 py-1 transition-colors hover:bg-muted"
+          >
+            <CloudIcon
+              className={cn(
+                "size-3.5",
+                cloudDetails.className,
+                isCloudBusy && "animate-spin",
+              )}
+              aria-hidden="true"
+            />
+            {cloudDetails.label}
+          </button>
         </div>
 
         <Button variant="outline" size="sm" className="hidden gap-1.5 shadow-none md:inline-flex">

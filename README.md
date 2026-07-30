@@ -1,29 +1,64 @@
 # Write Skill
 
-A modern, local-first document editor front end built with React 19, TypeScript, Vite, Tailwind CSS 4, shadcn/ui on Base UI, Zustand, Headless Tree, and Tiptap 3.
+A modern cloud-backed document editor built with React 19, TypeScript, Vite, Tailwind CSS 4, shadcn/ui on Base UI, Zustand, Headless Tree, Tiptap 3, Cloudflare Workers, and D1.
 
-## Current scope
+## Application architecture
 
-- Responsive shadcn sidebar shell
-- Accessible Headless Tree document hierarchy
-- Create folders and documents, rename with `F2` or double-click
-- Official Tiptap Simple Editor Template
-- Per-document Tiptap JSON persisted through Zustand middleware
-- Clear local data boundary for a later Cloudflare Worker + D1 API
+- Cloudflare Workers Static Assets serves the production React SPA.
+- `/api/*` requests run through `worker/index.ts` before static asset routing.
+- D1 stores each workspace as validated Tiptap/tree JSON with an atomic revision number.
+- A database trigger archives the previous snapshot on every successful update and retains the latest 50 revisions.
+- Anonymous workspaces are protected by a browser-generated high-entropy access token; only its SHA-256 hash is stored in D1.
+- Zustand remains the offline/local cache. Changes are debounced and synchronized to D1 when connectivity is available.
 
-## Development
+## API
 
-The first pull-request workflow installs the official shadcn and Tiptap template source, patches the template with document content callbacks, builds the app, and commits the generated component files back to the feature branch.
+- `GET /api/health`
+- `POST /api/workspaces`
+- `GET /api/workspaces/:workspaceId`
+- `PUT /api/workspaces/:workspaceId`
+- `DELETE /api/workspaces/:workspaceId`
+- `GET /api/workspaces/:workspaceId/revisions`
 
-After generated sources are committed:
+Workspace reads and writes require `Authorization: Bearer <workspace-access-token>`.
+
+## Local development
+
+Install dependencies and start the frontend:
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-Production verification:
+For local Worker and D1 development, apply the migration and run Wrangler in another terminal:
 
 ```bash
+npm run db:migrate:local
+npm run dev:worker
+```
+
+Vite proxies `/api` requests to Wrangler at `http://127.0.0.1:8787`.
+
+## Verification
+
+```bash
+npm run typecheck
 npm run build
 ```
+
+## Cloudflare deployment
+
+The `Deploy Cloudflare` GitHub Action runs on `main` and `feat/cloudflare-worker-d1`.
+It performs the following steps:
+
+1. Builds and typechecks the frontend and Worker.
+2. Finds or creates the `write-skill-db` D1 database in the APAC location.
+3. Writes the resolved D1 database ID into the temporary CI copy of `wrangler.jsonc`.
+4. Applies pending migrations.
+5. Deploys the Worker and SPA together as `write-skill`.
+
+Required GitHub secrets:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`

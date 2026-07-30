@@ -1,5 +1,8 @@
 node_modules
 dist
+.wrangler
+.dev.vars
+.wrangler-provision.jsonc
 .DS_Store
 *.local
 *.log
