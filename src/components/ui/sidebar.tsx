@@ -68,10 +68,21 @@ function SidebarProvider({
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
-        event.preventDefault()
-        toggleSidebar()
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "b") {
+        return
       }
+
+      const target = event.target as HTMLElement | null
+      if (
+        target?.closest(
+          'input, textarea, select, [contenteditable="true"], [role="textbox"]',
+        )
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      toggleSidebar()
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
