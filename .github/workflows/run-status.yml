@@ -1,0 +1,146 @@
+name: Record workflow runs
+run-name: Refresh recent workflow run IDs
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_run:
+    workflows:
+      - Deploy Cloudflare
+      - CI
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: record-workflow-runs
+  cancel-in-progress: true
+
+jobs:
+  record:
+    name: Update workflow run status issue
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Publish recent workflow runs
+        uses: actions/github-script@v8
+        env:
+          STATUS_ISSUE_TITLE: Workflow run status
+          CURRENT_WORKFLOW_NAME: ${{ github.workflow }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+            const issueTitle = process.env.STATUS_ISSUE_TITLE
+            const currentWorkflowName = process.env.CURRENT_WORKFLOW_NAME
+            const currentRunId = process.env.CURRENT_RUN_ID
+
+            const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner,
+              repo,
+              per_page: 30,
+            })
+
+            const runs = data.workflow_runs
+              .filter((run) => run.name !== currentWorkflowName)
+              .slice(0, 10)
+
+            const statusIcon = (run) => {
+              const result = run.conclusion ?? run.status
+              if (result === "success") return "✅"
+              if (result === "cancelled") return "⏹️"
+              if (result === "skipped" || result === "neutral") return "➖"
+              if (run.status !== "completed") return "⏳"
+              return "❌"
+            }
+
+            const escapeCell = (value) =>
+              String(value ?? "—").replaceAll("|", "\\|").replaceAll("\n", " ")
+
+            const rows = runs.map((run) => {
+              const result = run.conclusion ?? run.status
+              const branch = run.head_branch ?? "—"
+              const commit = run.head_sha ? run.head_sha.slice(0, 7) : "—"
+              const updated = run.updated_at
+                ? new Date(run.updated_at).toISOString().replace("T", " ").replace(".000Z", " UTC")
+                : "—"
+
+              return [
+                statusIcon(run),
+                `[${escapeCell(run.id)}](${run.html_url})`,
+                escapeCell(run.name),
+                escapeCell(result),
+                escapeCell(branch),
+                `\`${escapeCell(commit)}\``,
+                escapeCell(run.event),
+                escapeCell(updated),
+              ].join(" | ")
+            })
+
+            const table = rows.length > 0
+              ? [
+                  "| | Run ID | Workflow | Status | Branch | Commit | Event | Updated |",
+                  "| --- | ---: | --- | --- | --- | --- | --- | --- |",
+                  ...rows.map((row) => `| ${row} |`),
+                ].join("\n")
+              : "No non-recorder workflow runs exist yet."
+
+            const refreshedAt = new Date().toISOString().replace("T", " ").replace(".000Z", " UTC")
+            const recorderUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${currentRunId}`
+            const body = [
+              "# Workflow run status",
+              "",
+              "The latest 10 workflow runs are collected automatically so their Run IDs and logs remain easy to locate.",
+              "",
+              table,
+              "",
+              `Last refreshed: ${refreshedAt}`,
+              `Recorder run: [${currentRunId}](${recorderUrl})`,
+              "",
+              "This issue is maintained automatically by `.github/workflows/run-status.yml`.",
+            ].join("\n")
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "open",
+              per_page: 100,
+            })
+            const existing = issues.find(
+              (issue) => !issue.pull_request && issue.title === issueTitle,
+            )
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body,
+              })
+              core.notice(`Updated issue #${existing.number} with recent workflow Run IDs.`)
+            } else {
+              const created = await github.rest.issues.create({
+                owner,
+                repo,
+                title: issueTitle,
+                body,
+              })
+              core.notice(`Created issue #${created.data.number} with recent workflow Run IDs.`)
+            }
+
+            await core.summary
+              .addHeading("Workflow run status")
+              .addRaw(table)
+              .addLink("Open status issue", `${context.serverUrl}/${owner}/${repo}/issues`)
+              .write()
