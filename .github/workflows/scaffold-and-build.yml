@@ -1,8 +1,8 @@
-name: Verify frontend
+name: Verify application
 
 on:
   push:
-    branches: [main, feat/document-editor-frontend]
+    branches: [main, feat/document-editor-frontend, feat/cloudflare-worker-d1]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: frontend-${{ github.workflow }}-${{ github.ref }}
+  group: verify-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,5 +32,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build production bundle
+      - name: Typecheck and build application
         run: npm run build
