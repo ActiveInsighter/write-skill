@@ -1,4 +1,4 @@
-name: Frontend CI
+name: Full-stack CI
 
 on:
   push:
@@ -12,10 +12,10 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -28,8 +28,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Typecheck
+      - name: Typecheck frontend and Worker
         run: npm run typecheck
 
-      - name: Build
-        run: npm run build
+      - name: Validate local D1 migrations
+        run: npm run d1:migrate:local
+
+      - name: Build React application
+        run: vite build
+
+      - name: Bundle Worker dry run
+        run: npm run worker:dry-run

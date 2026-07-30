@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { ThemeProvider } from "next-themes"
 import { SimpleEditor } from "@/components/editor/simple-editor"
 import { AppSidebar } from "@/components/workspace/app-sidebar"
@@ -6,6 +7,22 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { initializeCloudSync } from "@/features/workspace/cloud-sync"
+
+function Workspace() {
+  useEffect(() => {
+    void initializeCloudSync()
+  }, [])
+
+  return (
+    <SidebarProvider defaultOpen>
+      <AppSidebar />
+      <SidebarInset className="h-svh overflow-hidden">
+        <SimpleEditor />
+      </SidebarInset>
+    </SidebarProvider>
+  )
+}
 
 export default function App() {
   return (
@@ -17,12 +34,7 @@ export default function App() {
       storageKey="write-skill-theme"
     >
       <TooltipProvider>
-        <SidebarProvider defaultOpen>
-          <AppSidebar />
-          <SidebarInset className="h-svh overflow-hidden">
-            <SimpleEditor />
-          </SidebarInset>
-        </SidebarProvider>
+        <Workspace />
       </TooltipProvider>
     </ThemeProvider>
   )

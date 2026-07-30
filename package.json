@@ -1,15 +1,22 @@
 {
   "name": "write-skill",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:worker": "npm run build && wrangler dev --config wrangler.jsonc",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview",
     "lint": "eslint . --max-warnings=0",
-    "typecheck": "tsc -b --pretty false",
-    "check": "npm run lint && npm run typecheck && npm run build"
+    "types:worker": "wrangler types worker-configuration.d.ts --config wrangler.jsonc",
+    "typecheck": "npm run types:worker && tsc -b --pretty false",
+    "check": "npm run lint && npm run typecheck && vite build",
+    "worker:dry-run": "wrangler deploy --dry-run --config wrangler.jsonc",
+    "d1:migrate:local": "wrangler d1 migrations apply write-skill-db --local --config wrangler.jsonc",
+    "d1:migrate:remote": "wrangler d1 migrations apply write-skill-db --remote --config .wrangler/wrangler.generated.jsonc",
+    "cf:prepare": "node scripts/prepare-cloudflare.mjs",
+    "deploy": "npm run check && npm run cf:prepare && npm run d1:migrate:remote && wrangler deploy --config .wrangler/wrangler.generated.jsonc"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -55,7 +62,8 @@
     "tailwindcss": "^4.1.14",
     "typescript": "^5.9.3",
     "typescript-eslint": "8.65.0",
-    "vite": "^7.2.0"
+    "vite": "^7.2.0",
+    "wrangler": "4.114.0"
   },
   "engines": {
     "node": ">=22.12.0"
