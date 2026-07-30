@@ -3,7 +3,12 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
 import { initialWorkspaceNodes } from "@/data/initial-documents"
-import type { WorkspaceNode, WorkspaceNodes } from "@/types/document"
+import type {
+  CloudSyncStatus,
+  WorkspaceNode,
+  WorkspaceNodes,
+  WorkspaceSnapshot,
+} from "@/types/document"
 
 const createId = (prefix: string) => {
   const randomId = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)
@@ -21,12 +26,11 @@ const collectDescendantIds = (nodes: WorkspaceNodes, nodeId: string): string[] =
 const findFirstDocument = (nodes: WorkspaceNodes): string | null =>
   Object.values(nodes).find((node) => node.type === "document")?.id ?? null
 
-interface WorkspaceState {
-  nodes: WorkspaceNodes
-  activeDocumentId: string | null
-  expandedItems: string[]
+interface WorkspaceState extends WorkspaceSnapshot {
   searchQuery: string
-  lastSavedAt: string | null
+  remoteRevision: number | null
+  cloudStatus: CloudSyncStatus
+  cloudError: string | null
   setSearchQuery: (query: string) => void
   setExpandedItems: (items: string[]) => void
   selectDocument: (documentId: string) => void
@@ -35,6 +39,11 @@ interface WorkspaceState {
   createFolder: (parentId?: string) => string
   deleteNode: (nodeId: string) => void
   updateDocumentContent: (documentId: string, content: JSONContent) => void
+  replaceWorkspace: (snapshot: WorkspaceSnapshot, remoteRevision: number) => void
+  setCloudState: (
+    cloudStatus: CloudSyncStatus,
+    options?: { error?: string | null; revision?: number | null },
+  ) => void
   resetWorkspace: () => void
 }
 
@@ -66,6 +75,13 @@ const emptyDocument = (title: string): JSONContent => ({
   ],
 })
 
+export const getWorkspaceSnapshot = (state: WorkspaceSnapshot): WorkspaceSnapshot => ({
+  nodes: state.nodes,
+  activeDocumentId: state.activeDocumentId,
+  expandedItems: state.expandedItems,
+  lastSavedAt: state.lastSavedAt,
+})
+
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set, get) => ({
@@ -74,6 +90,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       expandedItems: ["folder-product", "folder-research"],
       searchQuery: "",
       lastSavedAt: null,
+      remoteRevision: null,
+      cloudStatus: "local",
+      cloudError: null,
       setSearchQuery: (searchQuery) => set({ searchQuery }),
       setExpandedItems: (expandedItems) => set({ expandedItems }),
       selectDocument: (documentId) => {
@@ -210,6 +229,20 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           lastSavedAt: updatedAt,
         }))
       },
+      replaceWorkspace: (snapshot, remoteRevision) =>
+        set({
+          ...snapshot,
+          remoteRevision,
+          cloudStatus: "synced",
+          cloudError: null,
+        }),
+      setCloudState: (cloudStatus, options) =>
+        set((state) => ({
+          cloudStatus,
+          cloudError: options?.error === undefined ? state.cloudError : options.error,
+          remoteRevision:
+            options?.revision === undefined ? state.remoteRevision : options.revision,
+        })),
       resetWorkspace: () =>
         set({
           nodes: cloneInitialNodes(),
@@ -217,15 +250,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           expandedItems: ["folder-product", "folder-research"],
           searchQuery: "",
           lastSavedAt: null,
+          remoteRevision: null,
+          cloudStatus: "local",
+          cloudError: null,
         }),
     }),
     {
       name: "write-skill-workspace-v1",
+      version: 2,
+      migrate: (persistedState) => ({
+        ...(persistedState as Partial<WorkspaceState>),
+        remoteRevision: null,
+      }),
       partialize: (state) => ({
         nodes: state.nodes,
         activeDocumentId: state.activeDocumentId,
         expandedItems: state.expandedItems,
         lastSavedAt: state.lastSavedAt,
+        remoteRevision: state.remoteRevision,
       }),
     },
   ),
