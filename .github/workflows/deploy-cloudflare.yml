@@ -53,6 +53,11 @@ jobs:
           preCommands: wrangler d1 migrations apply write-skill-db --remote --config wrangler.jsonc
           command: deploy --config wrangler.jsonc
 
+      - name: Smoke test deployed Worker and D1
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: node scripts/smoke-test.mjs "$DEPLOYMENT_URL"
+
       - name: Write deployment summary
         if: always()
         env:
