@@ -52,6 +52,7 @@ jobs:
           import os
           import pty
           import select
+          import shutil
           import signal
           import sys
           import time
@@ -63,11 +64,12 @@ jobs:
               "@tiptap/cli@latest",
               "add",
               "simple-editor",
+              "--path",
+              "src/components",
               "-o",
               "-s",
           ]
-          interaction_deadline = time.monotonic() + 90
-          install_announced = False
+          interaction_deadline = time.monotonic() + 120
 
           pid, fd = pty.fork()
           if pid == 0:
@@ -93,25 +95,25 @@ jobs:
 
                   sys.stdout.buffer.write(chunk)
                   sys.stdout.buffer.flush()
-                  if b"Simple editor template installed" in chunk:
-                      install_announced = True
           finally:
               try:
                   os.close(fd)
               except OSError:
                   pass
 
-          # The CLI can close its controlling terminal before its child process
-          # finishes committing generated files. Wait for the filesystem result.
+          # Compatibility for CLI versions that interpret the configured alias
+          # as a literal directory even when an explicit output path is supplied.
+          literal_components = Path("@/components")
+          if literal_components.exists():
+              shutil.copytree(literal_components, Path("src/components"), dirs_exist_ok=True)
+              shutil.rmtree(Path("@"))
+              print("Moved literal @/components output into src/components.")
+
           matches = []
           filesystem_deadline = time.monotonic() + 60
           while time.monotonic() < filesystem_deadline:
               matches = sorted(
-                  (
-                      item
-                      for item in Path(".").rglob("*.tsx")
-                      if "simple" in item.name.lower() and "editor" in item.name.lower()
-                  ),
+                  Path("src/components").rglob("simple-editor.tsx"),
                   key=lambda item: (len(item.parts), item.as_posix()),
               )
               if matches:
@@ -133,20 +135,11 @@ jobs:
               except ChildProcessError:
                   pass
 
-          print(f"Install announcement observed: {install_announced}")
           print("Generated Simple Editor candidates:")
           for match in matches:
               print(f"- {match}")
 
           if not matches:
-              print("Recent component files:")
-              recent = sorted(
-                  (item for item in Path("src/components").rglob("*") if item.is_file()),
-                  key=lambda item: item.stat().st_mtime,
-                  reverse=True,
-              )[:30]
-              for item in recent:
-                  print(f"- {item}")
               raise SystemExit("Tiptap CLI did not generate the Simple Editor template.")
 
           actual = matches[0]
