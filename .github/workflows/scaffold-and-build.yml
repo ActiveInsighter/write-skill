@@ -40,8 +40,8 @@ jobs:
       - name: Install project dependencies
         run: npm install
 
-      - name: Install shadcn utility dependency
-        run: npm install tailwind-merge
+      - name: Install shadcn utility dependencies
+        run: npm install tailwind-merge tw-animate-css
 
       - name: Add shadcn Base UI components
         run: npx --yes shadcn@latest add sidebar button input separator skeleton -y -o -s
