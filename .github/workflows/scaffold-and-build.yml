@@ -55,6 +55,7 @@ jobs:
           import signal
           import sys
           import time
+          from pathlib import Path
 
           command = [
               "npx",
@@ -105,18 +106,101 @@ jobs:
               except OSError:
                   pass
 
-          template = "src/components/tiptap-templates/simple/simple-editor.tsx"
-          if not os.path.isfile(template):
+          components = Path("src/components")
+          matches = sorted(components.rglob("simple-editor.tsx"), key=lambda item: len(item.parts))
+          if not matches:
+              matches = sorted(
+                  (
+                      item
+                      for item in components.rglob("*.tsx")
+                      if "simple" in item.name.lower() and "editor" in item.name.lower()
+                  ),
+                  key=lambda item: len(item.parts),
+              )
+
+          print("Generated Simple Editor candidates:")
+          for match in matches:
+              print(f"- {match}")
+
+          if not matches:
               raise SystemExit("Tiptap CLI did not generate the Simple Editor template.")
 
-          print("Official Simple Editor source is present.")
+          actual = matches[0]
+          expected = Path("src/components/tiptap-templates/simple/simple-editor.tsx")
+          if actual != expected:
+              expected.parent.mkdir(parents=True, exist_ok=True)
+              module_path = actual.relative_to("src").with_suffix("").as_posix()
+              expected.write_text(
+                  f'export * from "@/{module_path}"\n',
+                  encoding="utf-8",
+              )
+              print(f"Created compatibility export: {expected} -> {actual}")
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"SIMPLE_EDITOR_PATH={actual.as_posix()}\n")
+
+          print(f"Official Simple Editor source is present: {actual}")
           PY
 
       - name: Connect Simple Editor to the workspace store
-        run: node scripts/patch-tiptap.mjs
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          script = Path("scripts/patch-tiptap.mjs")
+          source = script.read_text(encoding="utf-8")
+          source = source.replace(
+              'const filePath = "src/components/tiptap-templates/simple/simple-editor.tsx"',
+              'const filePath = process.env.SIMPLE_EDITOR_PATH\nif (!filePath) throw new Error("SIMPLE_EDITOR_PATH is not set")',
+          )
+          script.write_text(source, encoding="utf-8")
+          PY
+          node scripts/patch-tiptap.mjs
 
       - name: Build production bundle
         run: npm run build
+
+      - name: Replace bootstrap workflow with permanent CI
+        shell: bash
+        run: |
+          cat > .github/workflows/scaffold-and-build.yml <<'WORKFLOW'
+          name: Verify frontend
+
+          on:
+            push:
+              branches: [main, feat/document-editor-frontend]
+            pull_request:
+              branches: [main]
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          concurrency:
+            group: frontend-${{ github.workflow }}-${{ github.ref }}
+            cancel-in-progress: true
+
+          jobs:
+            build:
+              runs-on: ubuntu-latest
+              timeout-minutes: 10
+              steps:
+                - name: Checkout repository
+                  uses: actions/checkout@v4
+
+                - name: Set up Node.js
+                  uses: actions/setup-node@v4
+                  with:
+                    node-version: 22
+                    cache: npm
+
+                - name: Install dependencies
+                  run: npm ci
+
+                - name: Build production bundle
+                  run: npm run build
+          WORKFLOW
 
       - name: Commit verified source and generated components
         if: github.event_name == 'pull_request'
