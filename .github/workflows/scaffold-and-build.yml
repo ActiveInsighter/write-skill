@@ -66,14 +66,15 @@ jobs:
               "-o",
               "-s",
           ]
-          deadline = time.monotonic() + 90
+          interaction_deadline = time.monotonic() + 90
+          install_announced = False
 
           pid, fd = pty.fork()
           if pid == 0:
               os.execvp(command[0], command)
 
           try:
-              while time.monotonic() < deadline:
+              while time.monotonic() < interaction_deadline:
                   try:
                       os.write(fd, b"\n")
                   except OSError:
@@ -92,7 +93,37 @@ jobs:
 
                   sys.stdout.buffer.write(chunk)
                   sys.stdout.buffer.flush()
+                  if b"Simple editor template installed" in chunk:
+                      install_announced = True
           finally:
+              try:
+                  os.close(fd)
+              except OSError:
+                  pass
+
+          # The CLI can close its controlling terminal before its child process
+          # finishes committing generated files. Wait for the filesystem result.
+          matches = []
+          filesystem_deadline = time.monotonic() + 60
+          while time.monotonic() < filesystem_deadline:
+              matches = sorted(
+                  (
+                      item
+                      for item in Path(".").rglob("*.tsx")
+                      if "simple" in item.name.lower() and "editor" in item.name.lower()
+                  ),
+                  key=lambda item: (len(item.parts), item.as_posix()),
+              )
+              if matches:
+                  break
+              time.sleep(0.5)
+
+          try:
+              finished_pid, _ = os.waitpid(pid, os.WNOHANG)
+          except ChildProcessError:
+              finished_pid = pid
+
+          if not finished_pid:
               try:
                   os.killpg(pid, signal.SIGTERM)
               except ProcessLookupError:
@@ -101,28 +132,21 @@ jobs:
                   os.waitpid(pid, 0)
               except ChildProcessError:
                   pass
-              try:
-                  os.close(fd)
-              except OSError:
-                  pass
 
-          components = Path("src/components")
-          matches = sorted(components.rglob("simple-editor.tsx"), key=lambda item: len(item.parts))
-          if not matches:
-              matches = sorted(
-                  (
-                      item
-                      for item in components.rglob("*.tsx")
-                      if "simple" in item.name.lower() and "editor" in item.name.lower()
-                  ),
-                  key=lambda item: len(item.parts),
-              )
-
+          print(f"Install announcement observed: {install_announced}")
           print("Generated Simple Editor candidates:")
           for match in matches:
               print(f"- {match}")
 
           if not matches:
+              print("Recent component files:")
+              recent = sorted(
+                  (item for item in Path("src/components").rglob("*") if item.is_file()),
+                  key=lambda item: item.stat().st_mtime,
+                  reverse=True,
+              )[:30]
+              for item in recent:
+                  print(f"- {item}")
               raise SystemExit("Tiptap CLI did not generate the Simple Editor template.")
 
           actual = matches[0]
