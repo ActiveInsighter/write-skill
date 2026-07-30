@@ -13,3 +13,19 @@ export interface WorkspaceNode {
 }
 
 export type WorkspaceNodes = Record<string, WorkspaceNode>
+
+export interface WorkspaceSnapshot {
+  nodes: WorkspaceNodes
+  activeDocumentId: string | null
+  expandedItems: string[]
+  lastSavedAt: string | null
+}
+
+export type CloudSyncStatus =
+  | "local"
+  | "connecting"
+  | "syncing"
+  | "synced"
+  | "offline"
+  | "conflict"
+  | "error"
