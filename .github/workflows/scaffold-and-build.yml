@@ -44,7 +44,9 @@ jobs:
         run: npx --yes shadcn@latest add sidebar button input separator skeleton -y -o -s
 
       - name: Add official Tiptap Simple Editor template
-        run: npx --yes @tiptap/cli@latest add simple-editor -o -s
+        env:
+          CI: "true"
+        run: printf '\n' | npx --yes @tiptap/cli@latest add simple-editor -o -s
 
       - name: Connect Simple Editor to the workspace store
         run: node scripts/patch-tiptap.mjs
