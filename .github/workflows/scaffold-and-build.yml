@@ -49,7 +49,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          timeout 50s bash -c 'printf "\n\n\n\n\n" | script -qefc "npx --yes @tiptap/cli@latest add simple-editor -o -s" /dev/null'
+          timeout 35s bash -c 'yes "" | script -qefc "npx --yes @tiptap/cli@latest add simple-editor -o -s" /dev/null'
           cli_status=$?
           set -e
           if [[ ! -f src/components/tiptap-templates/simple/simple-editor.tsx ]]; then
