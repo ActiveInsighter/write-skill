@@ -2,9 +2,7 @@ name: Deploy Cloudflare
 
 on:
   push:
-    branches: [main, feat/cloudflare-worker-d1]
-  pull_request:
-    branches: [main, feat/document-editor-frontend]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,7 +14,6 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
