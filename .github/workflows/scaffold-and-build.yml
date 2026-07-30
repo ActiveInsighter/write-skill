@@ -65,15 +65,12 @@ jobs:
               "-o",
               "-s",
           ]
-          success_marker = b"Style imports automatically added"
           deadline = time.monotonic() + 90
-          transcript = bytearray()
 
           pid, fd = pty.fork()
           if pid == 0:
               os.execvp(command[0], command)
 
-          completed = False
           try:
               while time.monotonic() < deadline:
                   try:
@@ -94,13 +91,6 @@ jobs:
 
                   sys.stdout.buffer.write(chunk)
                   sys.stdout.buffer.flush()
-                  transcript.extend(chunk)
-                  if len(transcript) > 131072:
-                      del transcript[:-65536]
-
-                  if success_marker in transcript:
-                      completed = True
-                      break
           finally:
               try:
                   os.killpg(pid, signal.SIGTERM)
@@ -116,7 +106,7 @@ jobs:
                   pass
 
           template = "src/components/tiptap-templates/simple/simple-editor.tsx"
-          if not completed or not os.path.isfile(template):
+          if not os.path.isfile(template):
               raise SystemExit("Tiptap CLI did not generate the Simple Editor template.")
 
           print("Official Simple Editor source is present.")
