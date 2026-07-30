@@ -127,9 +127,15 @@ export function AppSidebar() {
     tree.scheduleRebuildTree()
   }, [nodes, tree])
 
-  useEffect(() => {
-    setSelectedItems([selectedDocumentId])
-  }, [selectedDocumentId])
+  useEffect(
+    () =>
+      useWorkspaceStore.subscribe((state, previousState) => {
+        if (state.selectedDocumentId !== previousState.selectedDocumentId) {
+          setSelectedItems([state.selectedDocumentId])
+        }
+      }),
+    [],
+  )
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
