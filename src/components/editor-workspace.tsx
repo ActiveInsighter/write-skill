@@ -6,6 +6,7 @@ import {
   CloudDownload,
   CloudOff,
   CloudUpload,
+  FilePlus2,
   LoaderCircle,
   Sparkles,
 } from "lucide-react"
@@ -25,7 +26,7 @@ import type { CloudSyncStatus } from "@/types/document"
 
 const formatSavedTime = (value: string | null) => {
   if (!value) return "Saved locally"
-  return `Saved ${new Intl.DateTimeFormat("en", {
+  return `Saved ${new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value))}`
@@ -51,6 +52,7 @@ export function EditorWorkspace() {
   const cloudStatus = useWorkspaceStore((state) => state.cloudStatus)
   const cloudError = useWorkspaceStore((state) => state.cloudError)
   const remoteRevision = useWorkspaceStore((state) => state.remoteRevision)
+  const createDocument = useWorkspaceStore((state) => state.createDocument)
   const renameNode = useWorkspaceStore((state) => state.renameNode)
   const updateDocumentContent = useWorkspaceStore((state) => state.updateDocumentContent)
 
@@ -87,22 +89,37 @@ export function EditorWorkspace() {
 
   if (!activeDocument || activeDocument.type !== "document") {
     return (
-      <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-muted/30 p-6">
-        <div className="max-w-sm rounded-2xl border bg-background p-8 text-center shadow-sm">
-          <div className="mx-auto mb-4 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Sparkles className="size-4" />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur md:px-4">
+          <SidebarTrigger className="-ml-1 shrink-0" />
+          <Separator orientation="vertical" className="mx-1 h-4 shrink-0" />
+          <span className="text-sm font-medium tracking-[-0.01em]">Write Skill</span>
+        </header>
+        <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-muted/30 p-5 sm:p-6">
+          <div className="w-full max-w-sm rounded-2xl border bg-background p-7 text-center shadow-sm sm:p-8">
+            <div className="mx-auto mb-4 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <Sparkles className="size-4" aria-hidden="true" />
+            </div>
+            <h1 className="text-lg font-semibold tracking-tight">Choose a document</h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Select a document in the sidebar or create a new one to start writing.
+            </p>
+            <Button type="button" className="mt-5" onClick={() => createDocument()}>
+              <FilePlus2 className="size-4" aria-hidden="true" />
+              Create document
+            </Button>
           </div>
-          <h1 className="text-lg font-semibold tracking-tight">Choose a document</h1>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Select a document in the sidebar or create a new one to start writing.
-          </p>
-        </div>
-      </main>
+        </main>
+      </div>
     )
   }
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <span role="status" aria-live="polite" className="sr-only">
+        {cloudError ? `${cloudDetails.label}: ${cloudError}` : cloudDetails.label}
+      </span>
+
       <header className="flex h-14 min-w-0 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur md:px-4">
         <SidebarTrigger className="-ml-1 shrink-0" />
         <Separator orientation="vertical" className="mx-1 h-4 shrink-0" />
@@ -165,6 +182,7 @@ export function EditorWorkspace() {
               cloudDetails.className,
               isCloudBusy && "animate-spin",
             )}
+            aria-hidden="true"
           />
         </Button>
       </header>
@@ -181,13 +199,24 @@ export function EditorWorkspace() {
               Choose a copy explicitly. Nothing will be overwritten automatically.
             </p>
           </div>
-          <div className="flex shrink-0 gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={useCloudCopy}>
-              <CloudDownload className="size-3.5" />
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={useCloudCopy}
+            >
+              <CloudDownload className="size-3.5" aria-hidden="true" />
               Use cloud
             </Button>
-            <Button type="button" size="sm" onClick={keepLocalCopy}>
-              <CloudUpload className="size-3.5" />
+            <Button
+              type="button"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={keepLocalCopy}
+            >
+              <CloudUpload className="size-3.5" aria-hidden="true" />
               Keep local
             </Button>
           </div>
