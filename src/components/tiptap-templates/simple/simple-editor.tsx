@@ -53,6 +53,7 @@ import { HighlighterIcon } from "@/components/tiptap-icons/highlighter-icon"
 import { LinkIcon } from "@/components/tiptap-icons/link-icon"
 
 import { useCursorVisibility } from "@/hooks/use-cursor-visibility"
+import { useRefRect } from "@/hooks/use-element-rect"
 import { useIsBreakpoint } from "@/hooks/use-is-breakpoint"
 import { useWindowSize } from "@/hooks/use-window-size"
 import { ThemeToggle } from "@/components/tiptap-templates/simple/theme-toggle"
@@ -147,10 +148,17 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
   const { height, offsetTop } = useWindowSize()
   const [mobileView, setMobileView] = useState<"main" | "highlighter" | "link">("main")
   const [toolbarHeight, setToolbarHeight] = useState(0)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const onUpdateRef = useRef(onUpdate)
   const lastEmittedContentRef = useRef<string | null>(null)
+  const lastEmittedContentObjectRef = useRef<JSONContent | null>(null)
+  const wrapperRect = useRefRect(wrapperRef, {
+    enabled: isMobile,
+    throttleMs: 100,
+    useResizeObserver: true,
+  })
 
   useEffect(() => {
     onUpdateRef.current = onUpdate
@@ -189,13 +197,14 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
     content: content ?? starterContent,
     onUpdate: ({ editor: currentEditor }) => {
       const nextContent = currentEditor.getJSON()
+      lastEmittedContentObjectRef.current = nextContent
       lastEmittedContentRef.current = JSON.stringify(nextContent)
       onUpdateRef.current?.(nextContent)
     },
   })
 
   const editorContextValue = useMemo(() => ({ editor }), [editor])
-  const bodyRect = useCursorVisibility({
+  useCursorVisibility({
     editor,
     overlayHeight: isMobile ? toolbarHeight : 0,
     scrollContainer: contentRef,
@@ -234,12 +243,21 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
 
   useEffect(() => {
     if (!editor || !content) return
+    if (content === lastEmittedContentObjectRef.current) return
 
     const incomingContent = JSON.stringify(content)
-    if (incomingContent === lastEmittedContentRef.current) return
-    if (incomingContent === JSON.stringify(editor.getJSON())) return
+    if (incomingContent === lastEmittedContentRef.current) {
+      lastEmittedContentObjectRef.current = content
+      return
+    }
+    if (incomingContent === JSON.stringify(editor.getJSON())) {
+      lastEmittedContentObjectRef.current = content
+      lastEmittedContentRef.current = incomingContent
+      return
+    }
 
     editor.commands.setContent(content, { emitUpdate: false })
+    lastEmittedContentObjectRef.current = content
     lastEmittedContentRef.current = incomingContent
   }, [content, editor])
 
@@ -247,20 +265,16 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
     if (!isMobile && mobileView !== "main") setMobileView("main")
   }, [isMobile, mobileView])
 
+  const mobileToolbarBottom = Math.max(0, wrapperRect.bottom - (height + offsetTop))
+
   return (
-    <div className="simple-editor-wrapper">
+    <div ref={wrapperRef} className="simple-editor-wrapper">
       <EditorContext.Provider value={editorContextValue}>
         <Toolbar
           ref={toolbarRef}
           className="simple-editor-toolbar"
           aria-label="Formatting toolbar"
-          style={
-            isMobile
-              ? {
-                  bottom: `calc(100% - ${height + offsetTop - bodyRect.y}px)`,
-                }
-              : undefined
-          }
+          style={isMobile ? { bottom: `${mobileToolbarBottom}px` } : undefined}
         >
           <div className="simple-editor-toolbar-content">
             {mobileView === "main" ? (

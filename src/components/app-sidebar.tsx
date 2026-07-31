@@ -5,8 +5,10 @@ import {
   FilePlus2,
   FolderPlus,
   LoaderCircle,
+  RefreshCw,
   Search,
   Sparkles,
+  X,
 } from "lucide-react"
 
 import { DocumentTree } from "@/components/document-tree"
@@ -21,6 +23,7 @@ import {
   SidebarInput,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { retryCloudSync } from "@/lib/cloud-sync"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store/workspace-store"
 import type { CloudSyncStatus } from "@/types/document"
@@ -68,6 +71,8 @@ export function AppSidebar() {
   const cloudDetails = cloudStatusDetails[cloudStatus]
   const CloudIcon = cloudDetails.icon
   const isCloudBusy = cloudStatus === "connecting" || cloudStatus === "syncing"
+  const canRetryCloud =
+    cloudStatus === "local" || cloudStatus === "offline" || cloudStatus === "error"
 
   return (
     <Sidebar collapsible="offcanvas" variant="sidebar">
@@ -89,12 +94,24 @@ export function AppSidebar() {
             aria-hidden="true"
           />
           <SidebarInput
+            type="search"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search documents"
-            aria-label="Search documents"
-            className="h-9 rounded-lg border-sidebar-border bg-sidebar-accent/45 pl-9 text-xs placeholder:text-sidebar-foreground/40 focus-visible:ring-sidebar-ring"
+            placeholder="Search documents and folders"
+            aria-label="Search documents and folders"
+            className="h-9 rounded-lg border-sidebar-border bg-sidebar-accent/45 px-9 text-xs placeholder:text-sidebar-foreground/40 focus-visible:ring-sidebar-ring [&::-webkit-search-cancel-button]:hidden"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              aria-label="Clear search"
+              title="Clear search"
+              className="absolute right-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-sidebar-foreground/45 outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            >
+              <X className="size-3.5" aria-hidden="true" />
+            </button>
+          )}
         </div>
       </SidebarHeader>
 
@@ -155,6 +172,19 @@ export function AppSidebar() {
               {cloudError ?? cloudDetails.detail}
             </span>
           </div>
+          {canRetryCloud && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0 text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              onClick={retryCloudSync}
+              aria-label="Retry cloud sync"
+              title="Retry cloud sync"
+            >
+              <RefreshCw className="size-3.5" aria-hidden="true" />
+            </Button>
+          )}
         </div>
       </SidebarFooter>
     </Sidebar>
