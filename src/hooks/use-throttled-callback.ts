@@ -22,9 +22,9 @@ export function useThrottledCallback<T extends (...args: any[]) => any>(
   dependencies: React.DependencyList = [],
   options: ThrottleSettings = defaultOptions,
 ): {
-  (this: ThisParameterType<T>, ...args: Parameters<T>): ReturnType<T>
+  (this: ThisParameterType<T>, ...args: Parameters<T>): ReturnType<T> | undefined
   cancel: () => void
-  flush: () => void
+  flush: () => ReturnType<T> | undefined
 } {
   const callbackRef = useRef(fn)
   callbackRef.current = fn
