@@ -47,6 +47,8 @@
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-padding-block: 2rem 30vh;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: var(--tt-scrollbar-color) transparent;
 }
@@ -80,6 +82,11 @@
   .simple-editor-toolbar-content {
     justify-content: flex-start;
     min-inline-size: max-content;
+  }
+
+  .simple-editor-content {
+    scroll-padding-block: 1rem calc(30vh + var(--tt-toolbar-height));
+    scrollbar-gutter: auto;
   }
 
   .simple-editor-content .tiptap.ProseMirror.simple-editor {
