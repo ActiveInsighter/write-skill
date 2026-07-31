@@ -61,7 +61,9 @@ interface RevisionRow {
 
 const MAX_BODY_BYTES = 2_000_000
 const MAX_WORKSPACE_NODES = 1_000
+const MAX_NODE_ID_LENGTH = 160
 const MAX_NAME_LENGTH = 200
+const MAX_TIMESTAMP_LENGTH = 64
 
 class HttpError extends Error {
   readonly status: number
@@ -89,7 +91,13 @@ const json = (data: unknown, status = 200, requestId?: string) =>
     },
   })
 
-const empty = (status: number, headers?: HeadersInit) => new Response(null, { status, headers })
+const empty = (status: number, requestId?: string, headers?: HeadersInit) => {
+  const responseHeaders = new Headers(headers)
+  responseHeaders.set("cache-control", "no-store")
+  responseHeaders.set("x-content-type-options", "nosniff")
+  if (requestId) responseHeaders.set("x-request-id", requestId)
+  return new Response(null, { status, headers: responseHeaders })
+}
 
 const readJson = async (request: Request): Promise<unknown> => {
   const declaredLength = Number(request.headers.get("content-length") ?? 0)
@@ -123,7 +131,11 @@ const validateName = (value: unknown, fallback = "My workspace") => {
 
 const validateTimestamp = (value: unknown, fieldName: string): string | null => {
   if (value === null) return null
-  if (typeof value !== "string" || value.length > 64 || Number.isNaN(Date.parse(value))) {
+  if (
+    typeof value !== "string" ||
+    value.length > MAX_TIMESTAMP_LENGTH ||
+    Number.isNaN(Date.parse(value))
+  ) {
     throw new HttpError(400, `${fieldName} must be an ISO timestamp or null.`)
   }
   return value
@@ -154,10 +166,20 @@ const validateSnapshot = (value: unknown): WorkspaceSnapshot => {
     const children = rawNode.children
     const updatedAt = rawNode.updatedAt
 
-    if (typeof id !== "string" || id !== key || id.length > 160) {
+    if (
+      typeof id !== "string" ||
+      id !== key ||
+      id.length === 0 ||
+      id.length > MAX_NODE_ID_LENGTH
+    ) {
       throw new HttpError(400, `Node ${key} has an invalid id.`)
     }
-    if (parentId !== null && (typeof parentId !== "string" || parentId.length > 160)) {
+    if (
+      parentId !== null &&
+      (typeof parentId !== "string" ||
+        parentId.length === 0 ||
+        parentId.length > MAX_NODE_ID_LENGTH)
+    ) {
       throw new HttpError(400, `Node ${id} has an invalid parentId.`)
     }
     if (type !== "folder" && type !== "document") {
@@ -166,7 +188,15 @@ const validateSnapshot = (value: unknown): WorkspaceSnapshot => {
     if (typeof name !== "string" || !name.trim() || name.trim().length > MAX_NAME_LENGTH) {
       throw new HttpError(400, `Node ${id} has an invalid name.`)
     }
-    if (!Array.isArray(children) || children.some((child) => typeof child !== "string")) {
+    if (
+      !Array.isArray(children) ||
+      children.some(
+        (child) =>
+          typeof child !== "string" ||
+          child.length === 0 ||
+          child.length > MAX_NODE_ID_LENGTH,
+      )
+    ) {
       throw new HttpError(400, `Node ${id} has invalid children.`)
     }
     if (new Set(children).size !== children.length) {
@@ -175,7 +205,11 @@ const validateSnapshot = (value: unknown): WorkspaceSnapshot => {
     if (type === "document" && children.length > 0) {
       throw new HttpError(400, `Document node ${id} cannot contain children.`)
     }
-    if (typeof updatedAt !== "string" || Number.isNaN(Date.parse(updatedAt))) {
+    if (
+      typeof updatedAt !== "string" ||
+      updatedAt.length > MAX_TIMESTAMP_LENGTH ||
+      Number.isNaN(Date.parse(updatedAt))
+    ) {
       throw new HttpError(400, `Node ${id} has an invalid updatedAt timestamp.`)
     }
 
@@ -225,8 +259,10 @@ const validateSnapshot = (value: unknown): WorkspaceSnapshot => {
   while (pending.length > 0) {
     const nodeId = pending.pop()!
     if (visited.has(nodeId)) throw new HttpError(400, "The workspace tree contains a cycle.")
+    const node = nodes[nodeId]
+    if (!node) throw new HttpError(400, "The workspace tree references a missing node.")
     visited.add(nodeId)
-    pending.push(...nodes[nodeId].children)
+    pending.push(...node.children)
   }
   if (visited.size !== nodeEntries.length) {
     throw new HttpError(400, "Every workspace node must be reachable from the root folder.")
@@ -294,7 +330,7 @@ const authenticateWorkspace = async (request: Request, env: Env, workspaceId: st
 
 const parseStoredSnapshot = (workspace: WorkspaceRow): WorkspaceSnapshot => {
   try {
-    return JSON.parse(workspace.snapshot_json) as WorkspaceSnapshot
+    return validateSnapshot(JSON.parse(workspace.snapshot_json))
   } catch {
     throw new HttpError(500, "Stored workspace data is invalid.")
   }
@@ -408,12 +444,17 @@ const updateWorkspace = async (
   )
 }
 
-const deleteWorkspace = async (request: Request, env: Env, workspaceId: string) => {
+const deleteWorkspace = async (
+  request: Request,
+  env: Env,
+  workspaceId: string,
+  requestId: string,
+) => {
   const { tokenHash } = await authenticateWorkspace(request, env, workspaceId)
   await env.DB.prepare(`DELETE FROM workspaces WHERE id = ? AND access_token_hash = ?`)
     .bind(workspaceId, tokenHash)
     .run()
-  return empty(204)
+  return empty(204, requestId)
 }
 
 const listRevisions = async (
@@ -452,7 +493,7 @@ const routeApiRequest = async (request: Request, env: Env, requestId: string) =>
   const segments = url.pathname.split("/").filter(Boolean)
 
   if (request.method === "OPTIONS") {
-    return empty(204, { Allow: "GET, POST, PUT, DELETE, OPTIONS" })
+    return empty(204, requestId, { Allow: "GET, POST, PUT, DELETE, OPTIONS" })
   }
 
   if (url.pathname === "/api/health" && request.method === "GET") {
@@ -474,12 +515,27 @@ const routeApiRequest = async (request: Request, env: Env, requestId: string) =>
   }
 
   if (segments[0] === "api" && segments[1] === "workspaces" && segments[2]) {
-    const workspaceId = decodeURIComponent(segments[2])
+    let workspaceId: string
+    try {
+      workspaceId = decodeURIComponent(segments[2])
+    } catch {
+      throw new HttpError(400, "Workspace id is not valid URL encoding.")
+    }
+
+    if (
+      workspaceId.length === 0 ||
+      workspaceId.length > MAX_NODE_ID_LENGTH ||
+      workspaceId.trim() !== workspaceId
+    ) {
+      throw new HttpError(400, "Workspace id is invalid.")
+    }
 
     if (segments.length === 3) {
       if (request.method === "GET") return getWorkspace(request, env, workspaceId, requestId)
       if (request.method === "PUT") return updateWorkspace(request, env, workspaceId, requestId)
-      if (request.method === "DELETE") return deleteWorkspace(request, env, workspaceId)
+      if (request.method === "DELETE") {
+        return deleteWorkspace(request, env, workspaceId, requestId)
+      }
     }
 
     if (segments.length === 4 && segments[3] === "revisions" && request.method === "GET") {

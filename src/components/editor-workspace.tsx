@@ -17,6 +17,7 @@ import {
 import { useShallow } from "zustand/react/shallow"
 
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import {
@@ -168,6 +169,8 @@ const ActiveDocumentEditor = React.memo(function ActiveDocumentEditor({
   )
 })
 
+type ConflictChoice = "cloud" | "local" | null
+
 export function EditorWorkspace() {
   const activeDocument = useWorkspaceStore(
     useShallow((state) => {
@@ -192,6 +195,7 @@ export function EditorWorkspace() {
   const renameNode = useWorkspaceStore((state) => state.renameNode)
 
   const [title, setTitle] = React.useState(activeDocument?.name ?? "")
+  const [conflictChoice, setConflictChoice] = React.useState<ConflictChoice>(null)
   const cloudDetails = cloudStatusDetails[cloudStatus]
   const CloudIcon = cloudDetails.icon
   const isCloudBusy = cloudStatus === "connecting" || cloudStatus === "syncing"
@@ -207,19 +211,17 @@ export function EditorWorkspace() {
     else setTitle(activeDocument.name)
   }
 
-  const useCloudCopy = () => {
-    const confirmed = window.confirm(
-      "Replace the local workspace with the cloud copy? Local changes that are not in the cloud will be discarded.",
-    )
-    if (confirmed) void reloadCloudWorkspace()
+  const confirmConflictChoice = () => {
+    if (conflictChoice === "cloud") void reloadCloudWorkspace()
+    if (conflictChoice === "local") void overwriteCloudWorkspace()
   }
 
-  const keepLocalCopy = () => {
-    const confirmed = window.confirm(
-      "Replace the cloud workspace with this browser's local copy? The current cloud copy will be archived as a revision.",
-    )
-    if (confirmed) void overwriteCloudWorkspace()
-  }
+  const conflictDialogTitle =
+    conflictChoice === "cloud" ? "Use the cloud copy?" : "Keep the local copy?"
+  const conflictDialogDescription =
+    conflictChoice === "cloud"
+      ? "The local workspace will be replaced by the current cloud copy. Local changes that are not in the cloud will be discarded."
+      : "The cloud workspace will be replaced by this browser's local copy. The current cloud copy remains available in revision history."
 
   if (!activeDocument) {
     return (
@@ -353,7 +355,7 @@ export function EditorWorkspace() {
               variant="outline"
               size="sm"
               className="w-full sm:w-auto"
-              onClick={useCloudCopy}
+              onClick={() => setConflictChoice("cloud")}
             >
               <CloudDownload className="size-3.5" aria-hidden="true" />
               Use cloud
@@ -362,7 +364,7 @@ export function EditorWorkspace() {
               type="button"
               size="sm"
               className="w-full sm:w-auto"
-              onClick={keepLocalCopy}
+              onClick={() => setConflictChoice("local")}
             >
               <CloudUpload className="size-3.5" aria-hidden="true" />
               Keep local
@@ -376,6 +378,18 @@ export function EditorWorkspace() {
           <ActiveDocumentEditor documentId={activeDocument.id} />
         </section>
       </main>
+
+      <ConfirmDialog
+        open={conflictChoice !== null}
+        onOpenChange={(open) => {
+          if (!open) setConflictChoice(null)
+        }}
+        title={conflictDialogTitle}
+        description={conflictDialogDescription}
+        confirmLabel={conflictChoice === "cloud" ? "Use cloud copy" : "Keep local copy"}
+        destructive={conflictChoice === "cloud"}
+        onConfirm={confirmConflictChoice}
+      />
     </div>
   )
 }

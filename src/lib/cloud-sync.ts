@@ -145,6 +145,26 @@ const bootstrap = async () => {
   if (syncLocalChanges) scheduleSync()
 }
 
+const recoverUnknownRevision = async (currentCredentials: WorkspaceCredentials) => {
+  const remote = await fetchRemoteWorkspace(currentCredentials)
+  const current = useWorkspaceStore.getState()
+  const localSnapshot = getWorkspaceSnapshot(current)
+  lastSyncedContentSignature = getWorkspaceContentSignature(remote.snapshot)
+
+  if (workspaceContentMatches(localSnapshot, remote.snapshot)) {
+    current.setCloudState("synced", {
+      error: null,
+      revision: remote.revision,
+    })
+    return
+  }
+
+  current.setCloudState("conflict", {
+    error: "The cloud revision was recovered, but the local and cloud copies differ. Choose which copy to keep.",
+    revision: remote.revision,
+  })
+}
+
 const syncWorkspace = async () => {
   if (!ready) return
 
@@ -185,20 +205,15 @@ const syncWorkspace = async () => {
     const state = useWorkspaceStore.getState()
     const baseRevision = state.remoteRevision
     if (!baseRevision) {
-      state.setCloudState("conflict", {
-        error: "The cloud revision is unknown. Choose which copy to keep before syncing.",
-      })
+      state.setCloudState("connecting", { error: null })
+      await recoverUnknownRevision(credentials)
       return
     }
 
     const submittedSnapshot = getWorkspaceSnapshot(state)
     const submittedSignature = getWorkspaceContentSignature(submittedSnapshot)
     state.setCloudState("syncing", { error: null })
-    const result = await updateRemoteWorkspace(
-      credentials,
-      baseRevision,
-      submittedSnapshot,
-    )
+    const result = await updateRemoteWorkspace(credentials, baseRevision, submittedSnapshot)
     lastSyncedContentSignature = submittedSignature
     useWorkspaceStore.getState().setCloudState("synced", {
       error: null,
@@ -212,7 +227,17 @@ const syncWorkspace = async () => {
       syncAgain = true
     }
   } catch (error) {
-    setCloudFailure(error, "Cloud sync failed.")
+    if (error instanceof WorkspaceApiError && error.status === 404) {
+      clearWorkspaceCredentials()
+      credentials = null
+      try {
+        if (await createWorkspaceFromLocalState()) syncAgain = true
+      } catch (recoveryError) {
+        setCloudFailure(recoveryError, "Unable to reconnect the cloud workspace.")
+      }
+    } else {
+      setCloudFailure(error, "Cloud sync failed.")
+    }
   } finally {
     syncInFlight = false
     if (syncAgain) {
