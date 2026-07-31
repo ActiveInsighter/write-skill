@@ -14,7 +14,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { SimpleEditor } from "@/components/tiptap-templates/simple/simple-editor"
 import {
   overwriteCloudWorkspace,
   reloadCloudWorkspace,
@@ -23,6 +22,11 @@ import {
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store/workspace-store"
 import type { CloudSyncStatus } from "@/types/document"
+
+const SimpleEditor = React.lazy(async () => {
+  const editorModule = await import("@/components/tiptap-templates/simple/simple-editor")
+  return { default: editorModule.SimpleEditor }
+})
 
 const formatSavedTime = (value: string | null) => {
   if (!value) return "Saved locally"
@@ -43,6 +47,25 @@ const cloudStatusDetails: Record<
   offline: { label: "Offline", icon: CloudOff, className: "text-amber-600" },
   conflict: { label: "Sync conflict", icon: CircleAlert, className: "text-amber-600" },
   error: { label: "Sync error", icon: CircleAlert, className: "text-destructive" },
+}
+
+function EditorLoadingState() {
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-background" role="status" aria-live="polite">
+      <div className="flex h-12 shrink-0 items-center justify-center border-b px-4">
+        <div className="h-7 w-full max-w-xl animate-pulse rounded-md bg-muted" />
+      </div>
+      <div className="mx-auto w-full max-w-[780px] flex-1 px-6 py-12 sm:px-10">
+        <div className="h-8 w-2/3 animate-pulse rounded-md bg-muted" />
+        <div className="mt-7 space-y-3">
+          <div className="h-3 w-full animate-pulse rounded bg-muted/80" />
+          <div className="h-3 w-11/12 animate-pulse rounded bg-muted/80" />
+          <div className="h-3 w-4/5 animate-pulse rounded bg-muted/80" />
+        </div>
+        <span className="sr-only">Loading editor</span>
+      </div>
+    </div>
+  )
 }
 
 export function EditorWorkspace() {
@@ -225,11 +248,13 @@ export function EditorWorkspace() {
 
       <main className="editor-stage min-h-0 min-w-0 flex-1 overflow-hidden p-2 sm:p-3 lg:p-4">
         <section className="editor-frame mx-auto h-full min-h-0 w-full min-w-0 max-w-[1280px] overflow-hidden rounded-xl border bg-background shadow-sm">
-          <SimpleEditor
-            key={activeDocument.id}
-            content={activeDocument.content}
-            onUpdate={(content) => updateDocumentContent(activeDocument.id, content)}
-          />
+          <React.Suspense fallback={<EditorLoadingState />}>
+            <SimpleEditor
+              key={activeDocument.id}
+              content={activeDocument.content}
+              onUpdate={(content) => updateDocumentContent(activeDocument.id, content)}
+            />
+          </React.Suspense>
         </section>
       </main>
     </div>
