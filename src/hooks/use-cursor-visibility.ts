@@ -2,7 +2,6 @@ import type { RefObject } from "react"
 import { useEffect } from "react"
 import type { Editor } from "@tiptap/react"
 
-import { useBodyRect } from "@/hooks/use-element-rect"
 import { useWindowSize } from "@/hooks/use-window-size"
 
 export interface CursorVisibilityOptions {
@@ -19,11 +18,6 @@ export function useCursorVisibility({
   scrollContainer,
 }: CursorVisibilityOptions) {
   const { height: viewportHeight, offsetTop: viewportOffsetTop } = useWindowSize()
-  const rect = useBodyRect({
-    enabled: true,
-    throttleMs: 100,
-    useResizeObserver: true,
-  })
 
   useEffect(() => {
     if (!editor) return
@@ -48,6 +42,8 @@ export function useCursorVisibility({
           overlayHeight -
           CURSOR_MARGIN
 
+        if (visibleBottom <= visibleTop) return
+
         let scrollDelta = 0
         if (cursor.bottom > visibleBottom) scrollDelta = cursor.bottom - visibleBottom
         else if (cursor.top < visibleTop) scrollDelta = cursor.top - visibleTop
@@ -70,6 +66,4 @@ export function useCursorVisibility({
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame)
     }
   }, [editor, overlayHeight, scrollContainer, viewportHeight, viewportOffsetTop])
-
-  return rect
 }
