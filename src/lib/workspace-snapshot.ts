@@ -80,19 +80,29 @@ export const normalizeWorkspaceSnapshot = (value: unknown): WorkspaceSnapshot | 
     ) {
       return null
     }
-    if (type === "document" && (children.length > 0 || !isTiptapDocument(content))) {
-      return null
-    }
     if (!isValidTimestamp(updatedAt)) return null
 
-    const node: WorkspaceNode = {
-      id,
-      parentId,
-      type,
-      name: name.trim(),
-      children: [...children],
-      updatedAt,
-      ...(type === "document" ? { content } : {}),
+    let node: WorkspaceNode
+    if (type === "document") {
+      if (children.length > 0 || !isTiptapDocument(content)) return null
+      node = {
+        id,
+        parentId,
+        type,
+        name: name.trim(),
+        children: [...children],
+        content,
+        updatedAt,
+      }
+    } else {
+      node = {
+        id,
+        parentId,
+        type,
+        name: name.trim(),
+        children: [...children],
+        updatedAt,
+      }
     }
     nodes[id] = node
   }
