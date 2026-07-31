@@ -44,10 +44,24 @@ const isNodeInsideSubtree = (
   return false
 }
 
+const getNodePath = (nodes: WorkspaceNodes, nodeId: string) => {
+  const path: string[] = []
+  let parentId = nodes[nodeId]?.parentId ?? null
+
+  while (parentId && parentId !== "root") {
+    const parent = nodes[parentId]
+    if (!parent) break
+    path.unshift(parent.name)
+    parentId = parent.parentId
+  }
+
+  return path.length > 0 ? path.join(" / ") : "Workspace"
+}
+
 const menuPopupClassName =
-  "min-w-52 rounded-xl border border-border/80 bg-popover p-1.5 text-popover-foreground shadow-xl shadow-black/10 outline-none"
+  "min-w-52 rounded-lg border bg-popover p-1.5 text-popover-foreground shadow-lg outline-none"
 const menuItemClassName =
-  "flex h-9 cursor-default select-none items-center gap-2 rounded-lg px-2.5 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+  "flex h-9 cursor-default select-none items-center gap-2 rounded-md px-2.5 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
 const menuShortcutClassName = "ml-auto text-[0.68rem] tracking-wide text-muted-foreground"
 
 export function DocumentTree() {
@@ -55,6 +69,7 @@ export function DocumentTree() {
   const activeDocumentId = useWorkspaceStore((state) => state.activeDocumentId)
   const expandedItems = useWorkspaceStore((state) => state.expandedItems)
   const searchQuery = useWorkspaceStore((state) => state.searchQuery)
+  const setSearchQuery = useWorkspaceStore((state) => state.setSearchQuery)
   const setExpandedItems = useWorkspaceStore((state) => state.setExpandedItems)
   const selectDocument = useWorkspaceStore((state) => state.selectDocument)
   const renameNode = useWorkspaceStore((state) => state.renameNode)
@@ -76,8 +91,7 @@ export function DocumentTree() {
       getChildren: (itemId) => nodes[itemId]?.children ?? [],
     },
     state: { expandedItems },
-    setExpandedItems: (value) =>
-      setExpandedItems(resolveStateUpdate(value, expandedItems)),
+    setExpandedItems: (value) => setExpandedItems(resolveStateUpdate(value, expandedItems)),
     onPrimaryAction: (item) => {
       if (item.getItemData().type === "document") selectDocument(item.getId())
     },
@@ -91,8 +105,7 @@ export function DocumentTree() {
 
       return items.every(
         (item) =>
-          item.getId() !== parentId &&
-          !isNodeInsideSubtree(nodes, parentId, item.getId()),
+          item.getId() !== parentId && !isNodeInsideSubtree(nodes, parentId, item.getId()),
       )
     },
     onDrop: (items, target) => {
@@ -117,16 +130,73 @@ export function DocumentTree() {
   }, [nodes, tree])
 
   const query = searchQuery.trim().toLocaleLowerCase()
-  const items = tree.getItems().filter((item) => {
-    if (!query) return true
-    return item.getItemData().name.toLocaleLowerCase().includes(query)
-  })
+  const searchResults = React.useMemo(
+    () =>
+      query
+        ? Object.values(nodes).filter(
+            (node) => node.id !== "root" && node.name.toLocaleLowerCase().includes(query),
+          )
+        : [],
+    [nodes, query],
+  )
 
-  if (query && items.length === 0) {
+  const openSearchResult = (node: WorkspaceNode) => {
+    const foldersToExpand: string[] = []
+    let currentId: string | null = node.type === "folder" ? node.id : node.parentId
+
+    while (currentId) {
+      if (nodes[currentId]?.type === "folder") foldersToExpand.push(currentId)
+      currentId = nodes[currentId]?.parentId ?? null
+    }
+
+    setExpandedItems(Array.from(new Set([...expandedItems, ...foldersToExpand])))
+    if (node.type === "document") selectDocument(node.id)
+    setSearchQuery("")
+  }
+
+  if (query) {
+    if (searchResults.length === 0) {
+      return (
+        <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-sidebar-foreground/55">
+          <SearchX className="size-5" aria-hidden="true" />
+          <p className="text-xs">No matching documents</p>
+        </div>
+      )
+    }
+
     return (
-      <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-sidebar-foreground/55">
-        <SearchX className="size-5" aria-hidden="true" />
-        <p className="text-xs">No matching documents</p>
+      <div className="flex min-w-0 flex-col gap-1" aria-label="Document search results">
+        <p className="px-2 pb-1 text-[0.68rem] text-sidebar-foreground/45">
+          {searchResults.length} {searchResults.length === 1 ? "result" : "results"}
+        </p>
+        {searchResults.map((node) => {
+          const isFolder = node.type === "folder"
+          const isActive = node.id === activeDocumentId
+
+          return (
+            <button
+              key={node.id}
+              type="button"
+              onClick={() => openSearchResult(node)}
+              className={cn(
+                "flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
+              )}
+            >
+              {isFolder ? (
+                <Folder className="size-4 shrink-0 text-amber-600/85" aria-hidden="true" />
+              ) : (
+                <FileText className="size-4 shrink-0 text-sidebar-foreground/55" aria-hidden="true" />
+              )}
+              <span className="grid min-w-0 flex-1 leading-tight">
+                <span className="truncate text-sm">{node.name}</span>
+                <span className="truncate text-[0.68rem] text-sidebar-foreground/45">
+                  {getNodePath(nodes, node.id)}
+                </span>
+              </span>
+            </button>
+          )
+        })}
       </div>
     )
   }
@@ -139,13 +209,7 @@ export function DocumentTree() {
     >
       <AssistiveTreeDescription tree={tree} />
 
-      {query && (
-        <div className="mb-1 rounded-lg bg-sidebar-accent/55 px-2.5 py-2 text-[0.68rem] leading-4 text-sidebar-foreground/55">
-          Dragging is paused while search is active.
-        </div>
-      )}
-
-      {items.map((item) => {
+      {tree.getItems().map((item) => {
         const node = item.getItemData()
         const isFolder = node.type === "folder"
         const isActive = node.id === activeDocumentId
@@ -182,7 +246,7 @@ export function DocumentTree() {
                 {...item.getDragHandleProps()}
                 aria-label={`Drag ${node.name}`}
                 title="Drag to move"
-                className="flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-sidebar-foreground/25 opacity-55 transition hover:bg-sidebar-accent hover:text-sidebar-foreground/65 hover:opacity-100 active:cursor-grabbing group-focus-within/tree-item:opacity-100 group-hover/tree-item:opacity-100"
+                className="flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-sidebar-foreground/30 opacity-0 transition hover:bg-sidebar-accent hover:text-sidebar-foreground/70 active:cursor-grabbing group-focus-within/tree-item:opacity-100 group-hover/tree-item:opacity-100"
                 onClick={(event) => event.stopPropagation()}
                 onDoubleClick={(event) => event.stopPropagation()}
               >
@@ -208,10 +272,7 @@ export function DocumentTree() {
                   <Folder className="size-4 shrink-0 text-amber-600/85" aria-hidden="true" />
                 )
               ) : (
-                <FileText
-                  className="size-4 shrink-0 text-sidebar-foreground/55"
-                  aria-hidden="true"
-                />
+                <FileText className="size-4 shrink-0 text-sidebar-foreground/55" aria-hidden="true" />
               )}
 
               {item.isRenaming() ? (
