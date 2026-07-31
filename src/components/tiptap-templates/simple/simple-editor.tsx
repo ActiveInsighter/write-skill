@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { JSONContent } from "@tiptap/core"
 import { EditorContent, EditorContext, useEditor } from "@tiptap/react"
 
@@ -171,6 +171,12 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
   const { height } = useWindowSize()
   const [mobileView, setMobileView] = useState<"main" | "highlighter" | "link">("main")
   const toolbarRef = useRef<HTMLDivElement>(null)
+  const onUpdateRef = useRef(onUpdate)
+  const lastEmittedContentRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    onUpdateRef.current = onUpdate
+  }, [onUpdate])
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -203,13 +209,30 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
       Selection,
     ],
     content: content ?? starterContent,
-    onUpdate: ({ editor }) => onUpdate?.(editor.getJSON()),
+    onUpdate: ({ editor: currentEditor }) => {
+      const nextContent = currentEditor.getJSON()
+      lastEmittedContentRef.current = JSON.stringify(nextContent)
+      onUpdateRef.current?.(nextContent)
+    },
   })
+
+  const editorContextValue = useMemo(() => ({ editor }), [editor])
 
   const rect = useCursorVisibility({
     editor,
     overlayHeight: toolbarRef.current?.getBoundingClientRect().height ?? 0,
   })
+
+  useEffect(() => {
+    if (!editor || !content) return
+
+    const incomingContent = JSON.stringify(content)
+    if (incomingContent === lastEmittedContentRef.current) return
+    if (incomingContent === JSON.stringify(editor.getJSON())) return
+
+    editor.commands.setContent(content, { emitUpdate: false })
+    lastEmittedContentRef.current = incomingContent
+  }, [content, editor])
 
   useEffect(() => {
     if (!isMobile && mobileView !== "main") {
@@ -219,7 +242,7 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
 
   return (
     <div className="simple-editor-wrapper">
-      <EditorContext.Provider value={{ editor }}>
+      <EditorContext.Provider value={editorContextValue}>
         <Toolbar
           ref={toolbarRef}
           className="simple-editor-toolbar"

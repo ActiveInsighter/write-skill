@@ -19,9 +19,13 @@ let syncTimer: ReturnType<typeof setTimeout> | undefined
 let syncInFlight = false
 let syncAgain = false
 let credentials: WorkspaceCredentials | null = null
+let lastSyncedContentSignature: string | null = null
+
+const getWorkspaceContentSignature = (snapshot: WorkspaceSnapshot) =>
+  `${snapshot.lastSavedAt ?? ""}:${JSON.stringify(snapshot.nodes)}`
 
 const workspaceContentMatches = (left: WorkspaceSnapshot, right: WorkspaceSnapshot) =>
-  left.lastSavedAt === right.lastSavedAt && JSON.stringify(left.nodes) === JSON.stringify(right.nodes)
+  getWorkspaceContentSignature(left) === getWorkspaceContentSignature(right)
 
 const clearScheduledSync = () => {
   if (!syncTimer) return
@@ -62,18 +66,25 @@ const scheduleSync = () => {
 
 const createWorkspaceFromLocalState = async () => {
   const state = useWorkspaceStore.getState()
+  const submittedSnapshot = getWorkspaceSnapshot(state)
   state.setCloudState("connecting", { error: null })
 
-  const remote = await createRemoteWorkspace(getWorkspaceSnapshot(state))
+  const remote = await createRemoteWorkspace(submittedSnapshot)
   credentials = {
     workspaceId: remote.workspaceId,
     accessToken: remote.accessToken,
   }
   saveWorkspaceCredentials(credentials)
+  lastSyncedContentSignature = getWorkspaceContentSignature(remote.snapshot)
   useWorkspaceStore.getState().setCloudState("synced", {
     error: null,
     revision: remote.revision,
   })
+
+  return (
+    getWorkspaceContentSignature(getWorkspaceSnapshot(useWorkspaceStore.getState())) !==
+    lastSyncedContentSignature
+  )
 }
 
 const bootstrap = async () => {
@@ -89,8 +100,9 @@ const bootstrap = async () => {
   credentials = loadWorkspaceCredentials()
 
   if (!credentials) {
-    await createWorkspaceFromLocalState()
+    const hasPendingLocalChanges = await createWorkspaceFromLocalState()
     ready = true
+    if (hasPendingLocalChanges) scheduleSync()
     return
   }
 
@@ -100,6 +112,7 @@ const bootstrap = async () => {
     const remote = await fetchRemoteWorkspace(credentials)
     const current = useWorkspaceStore.getState()
     const localSnapshot = getWorkspaceSnapshot(current)
+    lastSyncedContentSignature = getWorkspaceContentSignature(remote.snapshot)
 
     if (workspaceContentMatches(localSnapshot, remote.snapshot)) {
       current.setCloudState("synced", {
@@ -122,7 +135,7 @@ const bootstrap = async () => {
     if (error instanceof WorkspaceApiError && error.status === 404) {
       clearWorkspaceCredentials()
       credentials = null
-      await createWorkspaceFromLocalState()
+      syncLocalChanges = await createWorkspaceFromLocalState()
     } else {
       throw error
     }
@@ -150,13 +163,22 @@ const syncWorkspace = async () => {
     return
   }
 
+  const currentSnapshot = getWorkspaceSnapshot(current)
+  if (
+    current.remoteRevision &&
+    getWorkspaceContentSignature(currentSnapshot) === lastSyncedContentSignature
+  ) {
+    current.setCloudState("synced", { error: null })
+    return
+  }
+
   syncInFlight = true
 
   try {
     if (!credentials) credentials = loadWorkspaceCredentials()
 
     if (!credentials) {
-      await createWorkspaceFromLocalState()
+      if (await createWorkspaceFromLocalState()) syncAgain = true
       return
     }
 
@@ -169,16 +191,26 @@ const syncWorkspace = async () => {
       return
     }
 
+    const submittedSnapshot = getWorkspaceSnapshot(state)
+    const submittedSignature = getWorkspaceContentSignature(submittedSnapshot)
     state.setCloudState("syncing", { error: null })
     const result = await updateRemoteWorkspace(
       credentials,
       baseRevision,
-      getWorkspaceSnapshot(useWorkspaceStore.getState()),
+      submittedSnapshot,
     )
+    lastSyncedContentSignature = submittedSignature
     useWorkspaceStore.getState().setCloudState("synced", {
       error: null,
       revision: result.revision,
     })
+
+    if (
+      getWorkspaceContentSignature(getWorkspaceSnapshot(useWorkspaceStore.getState())) !==
+      submittedSignature
+    ) {
+      syncAgain = true
+    }
   } catch (error) {
     setCloudFailure(error, "Cloud sync failed.")
   } finally {
@@ -210,6 +242,7 @@ export const reloadCloudWorkspace = async () => {
     if (!credentials) throw new Error("No cloud workspace is connected to this browser.")
 
     const remote = await fetchRemoteWorkspace(credentials)
+    lastSyncedContentSignature = getWorkspaceContentSignature(remote.snapshot)
     useWorkspaceStore.getState().replaceWorkspace(remote.snapshot, remote.revision)
   } catch (error) {
     setCloudFailure(error, "Unable to load the cloud copy.")
@@ -238,19 +271,33 @@ export const overwriteCloudWorkspace = async () => {
     if (!credentials) throw new Error("No cloud workspace is connected to this browser.")
 
     const remote = await fetchRemoteWorkspace(credentials)
+    const submittedSnapshot = getWorkspaceSnapshot(useWorkspaceStore.getState())
+    const submittedSignature = getWorkspaceContentSignature(submittedSnapshot)
     const result = await updateRemoteWorkspace(
       credentials,
       remote.revision,
-      getWorkspaceSnapshot(useWorkspaceStore.getState()),
+      submittedSnapshot,
     )
+    lastSyncedContentSignature = submittedSignature
     useWorkspaceStore.getState().setCloudState("synced", {
       error: null,
       revision: result.revision,
     })
+
+    if (
+      getWorkspaceContentSignature(getWorkspaceSnapshot(useWorkspaceStore.getState())) !==
+      submittedSignature
+    ) {
+      syncAgain = true
+    }
   } catch (error) {
     setCloudFailure(error, "Unable to replace the cloud copy.")
   } finally {
     syncInFlight = false
+    if (syncAgain) {
+      syncAgain = false
+      scheduleSync()
+    }
   }
 }
 
