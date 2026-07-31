@@ -1,46 +1,55 @@
 import throttle from "lodash.throttle"
-
-import { useUnmount } from "@/hooks/use-unmount"
-import { useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 
 interface ThrottleSettings {
-  leading?: boolean | undefined
-  trailing?: boolean | undefined
+  leading?: boolean
+  trailing?: boolean
 }
 
-const defaultOptions: ThrottleSettings = {
+const defaultOptions: Required<ThrottleSettings> = {
   leading: false,
   trailing: true,
 }
 
 /**
- * A hook that returns a throttled callback function.
- *
- * @param fn The function to throttle
- * @param wait The time in ms to wait before calling the function
- * @param dependencies The dependencies to watch for changes
- * @param options The throttle options
+ * Return a throttled callback that always invokes the latest function and
+ * cancels pending work when its configuration changes or the component unmounts.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useThrottledCallback<T extends (...args: any[]) => any>(
   fn: T,
   wait = 250,
   dependencies: React.DependencyList = [],
-  options: ThrottleSettings = defaultOptions
+  options: ThrottleSettings = defaultOptions,
 ): {
   (this: ThisParameterType<T>, ...args: Parameters<T>): ReturnType<T>
   cancel: () => void
   flush: () => void
 } {
+  const callbackRef = useRef(fn)
+  callbackRef.current = fn
+
+  const leading = options.leading ?? defaultOptions.leading
+  const trailing = options.trailing ?? defaultOptions.trailing
+
   const handler = useMemo(
-    () => throttle<T>(fn, wait, options),
+    () =>
+      throttle(
+        function throttledCallback(
+          this: ThisParameterType<T>,
+          ...args: Parameters<T>
+        ) {
+          return callbackRef.current.apply(this, args)
+        } as T,
+        wait,
+        { leading, trailing },
+      ),
+    // The caller-provided dependencies intentionally control recreation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    dependencies
+    [wait, leading, trailing, ...dependencies],
   )
 
-  useUnmount(() => {
-    handler.cancel()
-  })
+  useEffect(() => () => handler.cancel(), [handler])
 
   return handler
 }
