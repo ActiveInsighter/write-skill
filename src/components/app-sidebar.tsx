@@ -4,7 +4,6 @@ import {
   CloudOff,
   FilePlus2,
   FolderPlus,
-  GripVertical,
   LoaderCircle,
   Search,
   Sparkles,
@@ -12,7 +11,6 @@ import {
 
 import { DocumentTree } from "@/components/document-tree"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   Sidebar,
   SidebarContent,
@@ -20,7 +18,7 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
-  SidebarRail,
+  SidebarInput,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
@@ -36,7 +34,7 @@ const cloudStatusDetails: Record<
   syncing: { label: "Syncing changes", detail: "Saving to Cloudflare D1", icon: LoaderCircle },
   synced: {
     label: "Cloud synced",
-    detail: "Local cache + D1 are current",
+    detail: "Local cache and D1 are current",
     icon: Cloud,
     className: "text-emerald-600",
   },
@@ -48,7 +46,7 @@ const cloudStatusDetails: Record<
   },
   conflict: {
     label: "Sync conflict",
-    detail: "Reload before overwriting",
+    detail: "Choose a copy in the editor",
     icon: CircleAlert,
     className: "text-amber-600",
   },
@@ -72,38 +70,38 @@ export function AppSidebar() {
   const isCloudBusy = cloudStatus === "connecting" || cloudStatus === "syncing"
 
   return (
-    <Sidebar collapsible="offcanvas" variant="sidebar" className="border-r border-sidebar-border/80">
-      <SidebarHeader className="gap-3 border-b border-sidebar-border/75 px-3 pb-3 pt-3">
+    <Sidebar collapsible="offcanvas" variant="sidebar">
+      <SidebarHeader className="gap-3 border-b border-sidebar-border px-3 py-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex aspect-square size-9 shrink-0 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
+          <div className="flex aspect-square size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
             <Sparkles className="size-4" aria-hidden="true" />
           </div>
           <div className="grid min-w-0 flex-1 text-left leading-tight">
             <span className="truncate text-sm font-semibold tracking-[-0.01em]">Write Skill</span>
-            <span className="truncate text-xs text-sidebar-foreground/50">Document workspace</span>
+            <span className="truncate text-xs text-sidebar-foreground/55">Document workspace</span>
           </div>
           <SidebarTrigger className="size-8 shrink-0 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground" />
         </div>
 
         <div className="relative">
           <Search
-            className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-sidebar-foreground/40"
+            className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-sidebar-foreground/45"
             aria-hidden="true"
           />
-          <Input
+          <SidebarInput
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Search documents"
             aria-label="Search documents"
-            className="h-9 rounded-xl border-sidebar-border bg-sidebar-accent/45 pl-9 text-xs shadow-none placeholder:text-sidebar-foreground/38 focus-visible:ring-sidebar-ring"
+            className="h-9 rounded-lg border-sidebar-border bg-sidebar-accent/45 pl-9 text-xs placeholder:text-sidebar-foreground/40 focus-visible:ring-sidebar-ring"
           />
         </div>
       </SidebarHeader>
 
       <SidebarContent className="overflow-hidden">
         <SidebarGroup className="min-h-0 flex-1 gap-1 px-2 py-3">
-          <div className="flex h-8 items-center justify-between px-1.5">
-            <span className="text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-sidebar-foreground/42">
+          <div className="flex h-8 items-center justify-between px-2">
+            <span className="text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-sidebar-foreground/45">
               Documents
             </span>
             <div className="flex items-center gap-0.5">
@@ -111,7 +109,7 @@ export function AppSidebar() {
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="size-7 rounded-lg text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                className="size-7 rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 onClick={() => createDocument()}
                 aria-label="Create document"
                 title="Create document"
@@ -122,7 +120,7 @@ export function AppSidebar() {
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="size-7 rounded-lg text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                className="size-7 rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 onClick={() => createFolder()}
                 aria-label="Create folder"
                 title="Create folder"
@@ -138,14 +136,14 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="gap-2 border-t border-sidebar-border/75 px-3 py-3">
+      <SidebarFooter className="border-t border-sidebar-border px-3 py-3">
         <div
-          className="flex min-w-0 items-center gap-2.5 rounded-xl border border-sidebar-border/70 bg-sidebar-accent/35 px-2.5 py-2"
+          className="flex min-w-0 items-center gap-2.5 rounded-lg border border-sidebar-border bg-sidebar-accent/35 px-2.5 py-2"
           title={cloudError ?? cloudDetails.detail}
         >
           <CloudIcon
             className={cn(
-              "size-4 shrink-0 text-sidebar-foreground/50",
+              "size-4 shrink-0 text-sidebar-foreground/55",
               cloudDetails.className,
               isCloudBusy && "animate-spin",
             )}
@@ -153,18 +151,12 @@ export function AppSidebar() {
           />
           <div className="grid min-w-0 flex-1 text-left leading-tight">
             <span className="truncate text-xs font-medium">{cloudDetails.label}</span>
-            <span className="truncate text-[0.68rem] text-sidebar-foreground/43">
+            <span className="truncate text-[0.68rem] text-sidebar-foreground/45">
               {cloudError ?? cloudDetails.detail}
             </span>
           </div>
         </div>
-
-        <div className="flex items-center gap-2 px-1 text-[0.68rem] text-sidebar-foreground/42">
-          <GripVertical className="size-3.5" aria-hidden="true" />
-          <span>Drag to organize · long-press for actions</span>
-        </div>
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
   )
 }

@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
-
 .simple-editor-wrapper {
   --tt-toolbar-height: 3rem;
   --tt-theme-text: var(--tt-gray-light-900);
@@ -15,10 +13,7 @@
   overscroll-behavior: contain;
   background-color: var(--tt-bg-color, var(--background));
   color: var(--tt-theme-text);
-  font-family: "Inter", sans-serif;
-  font-optical-sizing: auto;
-  font-weight: 400;
-  font-style: normal;
+  font-family: inherit;
 }
 
 .dark .simple-editor-wrapper {
@@ -72,11 +67,12 @@
 .simple-editor-content .tiptap.ProseMirror.simple-editor {
   box-sizing: border-box;
   flex: 0 0 auto;
-  inline-size: min(100%, 760px);
+  inline-size: min(100%, 780px);
   min-block-size: 100%;
   margin-inline: auto;
-  padding: 3.25rem clamp(1.5rem, 5vw, 4.25rem) 30vh;
-  font-family: "DM Sans", sans-serif;
+  padding: 3rem clamp(1.5rem, 5vw, 4rem) 30vh;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   outline: none;
 }
 

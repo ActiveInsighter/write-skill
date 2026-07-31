@@ -3,10 +3,10 @@ import {
   Check,
   CircleAlert,
   Cloud,
+  CloudDownload,
   CloudOff,
+  CloudUpload,
   LoaderCircle,
-  MoreHorizontal,
-  Share2,
   Sparkles,
 } from "lucide-react"
 
@@ -14,7 +14,11 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { SimpleEditor } from "@/components/tiptap-templates/simple/simple-editor"
-import { retryCloudSync } from "@/lib/cloud-sync"
+import {
+  overwriteCloudWorkspace,
+  reloadCloudWorkspace,
+  retryCloudSync,
+} from "@/lib/cloud-sync"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store/workspace-store"
 import type { CloudSyncStatus } from "@/types/document"
@@ -67,12 +71,26 @@ export function EditorWorkspace() {
     else setTitle(activeDocument.name)
   }
 
+  const useCloudCopy = () => {
+    const confirmed = window.confirm(
+      "Replace the local workspace with the cloud copy? Local changes that are not in the cloud will be discarded.",
+    )
+    if (confirmed) void reloadCloudWorkspace()
+  }
+
+  const keepLocalCopy = () => {
+    const confirmed = window.confirm(
+      "Replace the cloud workspace with this browser's local copy? The current cloud copy will be archived as a revision.",
+    )
+    if (confirmed) void overwriteCloudWorkspace()
+  }
+
   if (!activeDocument || activeDocument.type !== "document") {
     return (
-      <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.92),transparent_42%),linear-gradient(135deg,#f4f2ed,#eeece7)] p-6">
-        <div className="max-w-sm rounded-3xl border border-black/5 bg-white/72 p-8 text-center shadow-[0_20px_80px_-45px_rgba(24,24,27,0.45)] backdrop-blur-xl">
-          <div className="mx-auto mb-4 flex size-11 items-center justify-center rounded-2xl bg-zinc-950 text-white">
-            <Sparkles className="size-5" />
+      <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-muted/30 p-6">
+        <div className="max-w-sm rounded-2xl border bg-background p-8 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Sparkles className="size-4" />
           </div>
           <h1 className="text-lg font-semibold tracking-tight">Choose a document</h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -85,7 +103,7 @@ export function EditorWorkspace() {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="flex h-14 min-w-0 shrink-0 items-center gap-2 border-b border-border/70 bg-background/88 px-3 backdrop-blur-xl md:px-4">
+      <header className="flex h-14 min-w-0 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur md:px-4">
         <SidebarTrigger className="-ml-1 shrink-0" />
         <Separator orientation="vertical" className="mx-1 h-4 shrink-0" />
         <div className="min-w-0 flex-1">
@@ -101,23 +119,24 @@ export function EditorWorkspace() {
               }
             }}
             aria-label="Document title"
-            className="block h-8 w-full min-w-0 truncate rounded-lg bg-transparent px-2 text-sm font-medium tracking-[-0.01em] outline-none transition-colors hover:bg-muted/55 focus:bg-muted/70 md:max-w-md"
+            className="block h-8 w-full min-w-0 truncate rounded-md bg-transparent px-2 text-sm font-medium tracking-[-0.01em] outline-none transition-colors hover:bg-muted/60 focus:bg-muted md:max-w-lg"
           />
         </div>
 
         <div className="hidden shrink-0 items-center gap-1.5 text-xs text-muted-foreground lg:flex">
-          <span className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border/75 bg-background/75 px-2.5 py-1">
+          <span className="flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-background px-2.5 py-1">
             <Check className="size-3.5 text-emerald-600" aria-hidden="true" />
             {formatSavedTime(lastSavedAt)}
           </span>
           <button
             type="button"
             onClick={retryCloudSync}
+            disabled={isCloudBusy || cloudStatus === "conflict"}
             title={
               cloudError ??
               (remoteRevision ? `Cloud revision ${remoteRevision}` : "Cloud workspace not created yet")
             }
-            className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border/75 bg-background/75 px-2.5 py-1 transition-colors hover:bg-muted"
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-background px-2.5 py-1 transition-colors hover:bg-muted disabled:cursor-default disabled:opacity-70"
           >
             <CloudIcon
               className={cn(
@@ -138,6 +157,7 @@ export function EditorWorkspace() {
           aria-label={cloudDetails.label}
           title={cloudError ?? cloudDetails.label}
           onClick={retryCloudSync}
+          disabled={isCloudBusy || cloudStatus === "conflict"}
         >
           <CloudIcon
             className={cn(
@@ -147,26 +167,35 @@ export function EditorWorkspace() {
             )}
           />
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="hidden shrink-0 gap-1.5 shadow-none xl:inline-flex"
-        >
-          <Share2 className="size-3.5" />
-          Share
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0"
-          aria-label="More actions"
-        >
-          <MoreHorizontal className="size-4" />
-        </Button>
       </header>
 
+      {cloudStatus === "conflict" && (
+        <div
+          role="alert"
+          className="flex shrink-0 flex-col gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3 text-amber-950 sm:flex-row sm:items-center dark:border-amber-900/70 dark:bg-amber-950/35 dark:text-amber-100"
+        >
+          <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Local and cloud copies both changed</p>
+            <p className="mt-0.5 text-xs opacity-75">
+              Choose a copy explicitly. Nothing will be overwritten automatically.
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={useCloudCopy}>
+              <CloudDownload className="size-3.5" />
+              Use cloud
+            </Button>
+            <Button type="button" size="sm" onClick={keepLocalCopy}>
+              <CloudUpload className="size-3.5" />
+              Keep local
+            </Button>
+          </div>
+        </div>
+      )}
+
       <main className="editor-stage min-h-0 min-w-0 flex-1 overflow-hidden p-2 sm:p-3 lg:p-4">
-        <section className="editor-frame mx-auto h-full min-h-0 w-full min-w-0 max-w-[1360px] overflow-hidden rounded-2xl border border-black/5 bg-background shadow-[0_30px_100px_-52px_rgba(24,24,27,0.55)] ring-1 ring-white/70 dark:ring-white/5">
+        <section className="editor-frame mx-auto h-full min-h-0 w-full min-w-0 max-w-[1280px] overflow-hidden rounded-xl border bg-background shadow-sm">
           <SimpleEditor
             key={activeDocument.id}
             content={activeDocument.content}
