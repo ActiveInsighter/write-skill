@@ -26,6 +26,61 @@ const collectDescendantIds = (nodes: WorkspaceNodes, nodeId: string): string[] =
 const findFirstDocument = (nodes: WorkspaceNodes): string | null =>
   Object.values(nodes).find((node) => node.type === "document")?.id ?? null
 
+const getTopLevelNodeIds = (nodes: WorkspaceNodes, nodeIds: string[]) => {
+  const requestedIds = Array.from(
+    new Set(nodeIds.filter((nodeId) => nodeId !== "root" && nodes[nodeId])),
+  )
+  const requestedSet = new Set(requestedIds)
+
+  return requestedIds.filter((nodeId) => {
+    let parentId = nodes[nodeId]?.parentId
+    while (parentId) {
+      if (requestedSet.has(parentId)) return false
+      parentId = nodes[parentId]?.parentId ?? null
+    }
+    return true
+  })
+}
+
+const isNodeInsideSubtree = (nodes: WorkspaceNodes, nodeId: string, subtreeRootId: string) => {
+  let currentId: string | null = nodeId
+  while (currentId) {
+    if (currentId === subtreeRootId) return true
+    currentId = nodes[currentId]?.parentId ?? null
+  }
+  return false
+}
+
+const cloneSubtree = (
+  sourceNodes: WorkspaceNodes,
+  sourceId: string,
+  parentId: string,
+  updatedAt: string,
+  renameRoot: boolean,
+): { rootId: string; nodes: WorkspaceNodes } => {
+  const source = sourceNodes[sourceId]
+  const id = createId(source.type === "folder" ? "folder" : "doc")
+  const clonedNodes: WorkspaceNodes = {}
+  const clonedNode: WorkspaceNode = {
+    ...structuredClone(source),
+    id,
+    parentId,
+    name: renameRoot ? `${source.name} copy` : source.name,
+    children: [],
+    updatedAt,
+  }
+
+  clonedNodes[id] = clonedNode
+
+  for (const childId of source.children) {
+    const childClone = cloneSubtree(sourceNodes, childId, id, updatedAt, false)
+    clonedNode.children.push(childClone.rootId)
+    Object.assign(clonedNodes, childClone.nodes)
+  }
+
+  return { rootId: id, nodes: clonedNodes }
+}
+
 interface WorkspaceState extends WorkspaceSnapshot {
   searchQuery: string
   remoteRevision: number | null
@@ -37,6 +92,8 @@ interface WorkspaceState extends WorkspaceSnapshot {
   renameNode: (nodeId: string, name: string) => void
   createDocument: (parentId?: string) => string
   createFolder: (parentId?: string) => string
+  duplicateNode: (nodeId: string) => string | null
+  moveNodes: (nodeIds: string[], parentId: string, insertionIndex?: number) => void
   deleteNode: (nodeId: string) => void
   updateDocumentContent: (documentId: string, content: JSONContent) => void
   replaceWorkspace: (snapshot: WorkspaceSnapshot, remoteRevision: number) => void
@@ -182,6 +239,104 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           lastSavedAt: updatedAt,
         }))
         return id
+      },
+      duplicateNode: (nodeId) => {
+        if (nodeId === "root") return null
+        const state = get()
+        const source = state.nodes[nodeId]
+        const parentId = source?.parentId
+        if (!source || !parentId || !state.nodes[parentId]) return null
+
+        const updatedAt = new Date().toISOString()
+        const cloned = cloneSubtree(state.nodes, nodeId, parentId, updatedAt, true)
+        const parentChildren = state.nodes[parentId].children
+        const sourceIndex = parentChildren.indexOf(nodeId)
+        const insertionIndex = sourceIndex < 0 ? parentChildren.length : sourceIndex + 1
+        const nextChildren = [...parentChildren]
+        nextChildren.splice(insertionIndex, 0, cloned.rootId)
+
+        set({
+          nodes: {
+            ...state.nodes,
+            ...cloned.nodes,
+            [parentId]: {
+              ...state.nodes[parentId],
+              children: nextChildren,
+              updatedAt,
+            },
+          },
+          activeDocumentId:
+            source.type === "document" ? cloned.rootId : state.activeDocumentId,
+          expandedItems: Array.from(
+            new Set([
+              ...state.expandedItems,
+              parentId,
+              ...(source.type === "folder" ? [cloned.rootId] : []),
+            ]),
+          ),
+          lastSavedAt: updatedAt,
+        })
+
+        return cloned.rootId
+      },
+      moveNodes: (nodeIds, requestedParentId, insertionIndex) => {
+        const state = get()
+        const targetParent = state.nodes[requestedParentId]
+        const movedIds = getTopLevelNodeIds(state.nodes, nodeIds)
+
+        if (targetParent?.type !== "folder" || movedIds.length === 0) return
+        if (
+          movedIds.some(
+            (nodeId) =>
+              nodeId === requestedParentId ||
+              isNodeInsideSubtree(state.nodes, requestedParentId, nodeId),
+          )
+        ) {
+          return
+        }
+
+        const updatedAt = new Date().toISOString()
+        const nextNodes = { ...state.nodes }
+        const affectedParentIds = new Set<string>([requestedParentId])
+
+        for (const nodeId of movedIds) {
+          const parentId = nextNodes[nodeId]?.parentId
+          if (parentId && nextNodes[parentId]) affectedParentIds.add(parentId)
+        }
+
+        for (const parentId of affectedParentIds) {
+          nextNodes[parentId] = {
+            ...nextNodes[parentId],
+            children: nextNodes[parentId].children.filter((childId) => !movedIds.includes(childId)),
+            updatedAt,
+          }
+        }
+
+        const targetChildren = [...nextNodes[requestedParentId].children]
+        const safeInsertionIndex =
+          insertionIndex === undefined
+            ? targetChildren.length
+            : Math.max(0, Math.min(insertionIndex, targetChildren.length))
+        targetChildren.splice(safeInsertionIndex, 0, ...movedIds)
+        nextNodes[requestedParentId] = {
+          ...nextNodes[requestedParentId],
+          children: targetChildren,
+          updatedAt,
+        }
+
+        for (const nodeId of movedIds) {
+          nextNodes[nodeId] = {
+            ...nextNodes[nodeId],
+            parentId: requestedParentId,
+            updatedAt,
+          }
+        }
+
+        set({
+          nodes: nextNodes,
+          expandedItems: Array.from(new Set([...state.expandedItems, requestedParentId])),
+          lastSavedAt: updatedAt,
+        })
       },
       deleteNode: (nodeId) => {
         if (nodeId === "root") return
