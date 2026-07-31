@@ -23,8 +23,18 @@ const collectDescendantIds = (nodes: WorkspaceNodes, nodeId: string): string[] =
   return [nodeId, ...node.children.flatMap((childId) => collectDescendantIds(nodes, childId))]
 }
 
-const findFirstDocument = (nodes: WorkspaceNodes): string | null =>
-  Object.values(nodes).find((node) => node.type === "document")?.id ?? null
+const findFirstDocument = (nodes: WorkspaceNodes, nodeId = "root"): string | null => {
+  const node = nodes[nodeId]
+  if (!node) return null
+  if (node.type === "document") return node.id
+
+  for (const childId of node.children) {
+    const documentId = findFirstDocument(nodes, childId)
+    if (documentId) return documentId
+  }
+
+  return null
+}
 
 const getTopLevelNodeIds = (nodes: WorkspaceNodes, nodeIds: string[]) => {
   const requestedIds = Array.from(
@@ -203,6 +213,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           },
           activeDocumentId: id,
           expandedItems: Array.from(new Set([...current.expandedItems, parentId])),
+          searchQuery: "",
           lastSavedAt: updatedAt,
         }))
         return id
@@ -236,6 +247,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             [id]: node,
           },
           expandedItems: Array.from(new Set([...current.expandedItems, parentId, id])),
+          searchQuery: "",
           lastSavedAt: updatedAt,
         }))
         return id
@@ -344,6 +356,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const node = state.nodes[nodeId]
         if (!node) return
 
+        const updatedAt = new Date().toISOString()
         const deletedIds = new Set(collectDescendantIds(state.nodes, nodeId))
         const nextNodes = { ...state.nodes }
         deletedIds.forEach((id) => delete nextNodes[id])
@@ -352,7 +365,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           nextNodes[node.parentId] = {
             ...nextNodes[node.parentId],
             children: nextNodes[node.parentId].children.filter((id) => id !== nodeId),
-            updatedAt: new Date().toISOString(),
+            updatedAt,
           }
         }
 
@@ -365,7 +378,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           nodes: nextNodes,
           activeDocumentId: nextActiveDocumentId,
           expandedItems: state.expandedItems.filter((id) => !deletedIds.has(id)),
-          lastSavedAt: new Date().toISOString(),
+          lastSavedAt: updatedAt,
         })
       },
       updateDocumentContent: (documentId, content) => {
@@ -387,6 +400,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       replaceWorkspace: (snapshot, remoteRevision) =>
         set({
           ...snapshot,
+          searchQuery: "",
           remoteRevision,
           cloudStatus: "synced",
           cloudError: null,

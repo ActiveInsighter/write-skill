@@ -1,13 +1,16 @@
 import * as React from "react"
 import {
   Check,
+  ChevronRight,
   CircleAlert,
   Cloud,
   CloudDownload,
   CloudOff,
   CloudUpload,
   FilePlus2,
+  Folder,
   LoaderCircle,
+  RefreshCw,
   Sparkles,
 } from "lucide-react"
 
@@ -21,7 +24,7 @@ import {
 } from "@/lib/cloud-sync"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store/workspace-store"
-import type { CloudSyncStatus } from "@/types/document"
+import type { CloudSyncStatus, WorkspaceNodes } from "@/types/document"
 
 const SimpleEditor = React.lazy(async () => {
   const editorModule = await import("@/components/tiptap-templates/simple/simple-editor")
@@ -30,10 +33,30 @@ const SimpleEditor = React.lazy(async () => {
 
 const formatSavedTime = (value: string | null) => {
   if (!value) return "Saved locally"
+
+  const savedAt = new Date(value)
+  if (Number.isNaN(savedAt.getTime())) return "Saved locally"
+
   return `Saved ${new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value))}`
+  }).format(savedAt)}`
+}
+
+const getDocumentPath = (nodes: WorkspaceNodes, documentId: string) => {
+  const path: string[] = []
+  const visited = new Set<string>()
+  let parentId = nodes[documentId]?.parentId ?? null
+
+  while (parentId && parentId !== "root" && !visited.has(parentId)) {
+    visited.add(parentId)
+    const parent = nodes[parentId]
+    if (!parent) break
+    path.unshift(parent.name)
+    parentId = parent.parentId
+  }
+
+  return path
 }
 
 const cloudStatusDetails: Record<
@@ -68,6 +91,54 @@ function EditorLoadingState() {
   )
 }
 
+interface EditorErrorBoundaryProps {
+  children: React.ReactNode
+  resetKey: string
+}
+
+interface EditorErrorBoundaryState {
+  error: Error | null
+}
+
+class EditorErrorBoundary extends React.Component<
+  EditorErrorBoundaryProps,
+  EditorErrorBoundaryState
+> {
+  state: EditorErrorBoundaryState = { error: null }
+
+  static getDerivedStateFromError(error: Error): EditorErrorBoundaryState {
+    return { error }
+  }
+
+  componentDidUpdate(previousProps: EditorErrorBoundaryProps) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null })
+    }
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children
+
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center bg-background p-6" role="alert">
+        <div className="w-full max-w-md rounded-2xl border bg-card p-7 text-center shadow-sm">
+          <div className="mx-auto flex size-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+            <CircleAlert className="size-4" aria-hidden="true" />
+          </div>
+          <h2 className="mt-4 text-base font-semibold tracking-tight">Editor could not be opened</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Your document remains saved. Reload the application to retry loading the editor.
+          </p>
+          <Button type="button" className="mt-5" onClick={() => window.location.reload()}>
+            <RefreshCw className="size-4" aria-hidden="true" />
+            Reload editor
+          </Button>
+        </div>
+      </div>
+    )
+  }
+}
+
 export function EditorWorkspace() {
   const activeDocumentId = useWorkspaceStore((state) => state.activeDocumentId)
   const nodes = useWorkspaceStore((state) => state.nodes)
@@ -81,6 +152,10 @@ export function EditorWorkspace() {
 
   const activeDocument = activeDocumentId ? nodes[activeDocumentId] : undefined
   const [title, setTitle] = React.useState(activeDocument?.name ?? "")
+  const documentPath = React.useMemo(
+    () => (activeDocument ? getDocumentPath(nodes, activeDocument.id) : []),
+    [activeDocument, nodes],
+  )
   const cloudDetails = cloudStatusDetails[cloudStatus]
   const CloudIcon = cloudDetails.icon
   const isCloudBusy = cloudStatus === "connecting" || cloudStatus === "syncing"
@@ -143,10 +218,23 @@ export function EditorWorkspace() {
         {cloudError ? `${cloudDetails.label}: ${cloudError}` : cloudDetails.label}
       </span>
 
-      <header className="flex h-14 min-w-0 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur md:px-4">
+      <header className="flex h-16 min-w-0 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur md:px-4">
         <SidebarTrigger className="-ml-1 shrink-0" />
-        <Separator orientation="vertical" className="mx-1 h-4 shrink-0" />
-        <div className="min-w-0 flex-1">
+        <Separator orientation="vertical" className="mx-1 h-5 shrink-0" />
+        <div className="grid min-w-0 flex-1 gap-0.5">
+          <div
+            className="hidden min-w-0 items-center gap-1 overflow-hidden px-2 text-[0.68rem] text-muted-foreground sm:flex"
+            aria-label="Document location"
+          >
+            <Folder className="size-3 shrink-0" aria-hidden="true" />
+            <span className="shrink-0">Workspace</span>
+            {documentPath.map((segment, index) => (
+              <React.Fragment key={`${segment}-${index}`}>
+                <ChevronRight className="size-3 shrink-0 opacity-55" aria-hidden="true" />
+                <span className="truncate">{segment}</span>
+              </React.Fragment>
+            ))}
+          </div>
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
@@ -159,11 +247,11 @@ export function EditorWorkspace() {
               }
             }}
             aria-label="Document title"
-            className="block h-8 w-full min-w-0 truncate rounded-md bg-transparent px-2 text-sm font-medium tracking-[-0.01em] outline-none transition-colors hover:bg-muted/60 focus:bg-muted md:max-w-lg"
+            className="block h-7 w-full min-w-0 truncate rounded-md bg-transparent px-2 text-sm font-semibold tracking-[-0.01em] outline-none transition-colors hover:bg-muted/60 focus:bg-muted md:max-w-xl"
           />
         </div>
 
-        <div className="hidden shrink-0 items-center gap-1.5 text-xs text-muted-foreground lg:flex">
+        <div className="hidden shrink-0 items-center gap-1.5 text-xs text-muted-foreground xl:flex">
           <span className="flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-background px-2.5 py-1">
             <Check className="size-3.5 text-emerald-600" aria-hidden="true" />
             {formatSavedTime(lastSavedAt)}
@@ -193,7 +281,7 @@ export function EditorWorkspace() {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 shrink-0 lg:hidden"
+          className="size-8 shrink-0 xl:hidden"
           aria-label={cloudDetails.label}
           title={cloudError ?? cloudDetails.label}
           onClick={retryCloudSync}
@@ -247,14 +335,16 @@ export function EditorWorkspace() {
       )}
 
       <main className="editor-stage min-h-0 min-w-0 flex-1 overflow-hidden p-2 sm:p-3 lg:p-4">
-        <section className="editor-frame mx-auto h-full min-h-0 w-full min-w-0 max-w-[1280px] overflow-hidden rounded-xl border bg-background shadow-sm">
-          <React.Suspense fallback={<EditorLoadingState />}>
-            <SimpleEditor
-              key={activeDocument.id}
-              content={activeDocument.content}
-              onUpdate={(content) => updateDocumentContent(activeDocument.id, content)}
-            />
-          </React.Suspense>
+        <section className="editor-frame mx-auto h-full min-h-0 w-full min-w-0 max-w-[1240px] overflow-hidden rounded-2xl border border-border/80 bg-card shadow-[0_12px_40px_-24px_rgba(28,25,23,0.28)]">
+          <EditorErrorBoundary resetKey={activeDocument.id}>
+            <React.Suspense fallback={<EditorLoadingState />}>
+              <SimpleEditor
+                key={activeDocument.id}
+                content={activeDocument.content}
+                onUpdate={(content) => updateDocumentContent(activeDocument.id, content)}
+              />
+            </React.Suspense>
+          </EditorErrorBoundary>
         </section>
       </main>
     </div>

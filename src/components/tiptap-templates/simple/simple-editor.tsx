@@ -146,6 +146,7 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
   const isMobile = useIsBreakpoint()
   const { height, offsetTop } = useWindowSize()
   const [mobileView, setMobileView] = useState<"main" | "highlighter" | "link">("main")
+  const [toolbarHeight, setToolbarHeight] = useState(0)
   const toolbarRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const onUpdateRef = useRef(onUpdate)
@@ -194,14 +195,42 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
   })
 
   const editorContextValue = useMemo(() => ({ editor }), [editor])
-  const toolbarHeight = isMobile
-    ? (toolbarRef.current?.getBoundingClientRect().height ?? 0)
-    : 0
   const bodyRect = useCursorVisibility({
     editor,
-    overlayHeight: toolbarHeight,
+    overlayHeight: isMobile ? toolbarHeight : 0,
     scrollContainer: contentRef,
   })
+
+  useEffect(() => {
+    const toolbar = toolbarRef.current
+    if (!isMobile || !toolbar) {
+      setToolbarHeight(0)
+      return
+    }
+
+    let animationFrame: number | null = null
+    const measureToolbar = () => {
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame)
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null
+        setToolbarHeight(toolbar.getBoundingClientRect().height)
+      })
+    }
+
+    measureToolbar()
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measureToolbar)
+    resizeObserver?.observe(toolbar)
+    window.addEventListener("resize", measureToolbar, { passive: true })
+    window.visualViewport?.addEventListener("resize", measureToolbar, { passive: true })
+
+    return () => {
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame)
+      resizeObserver?.disconnect()
+      window.removeEventListener("resize", measureToolbar)
+      window.visualViewport?.removeEventListener("resize", measureToolbar)
+    }
+  }, [isMobile, mobileView])
 
   useEffect(() => {
     if (!editor || !content) return
