@@ -41,7 +41,7 @@ const formatSavedTime = (value: string | null) => {
   const savedAt = new Date(value)
   if (Number.isNaN(savedAt.getTime())) return "Saved locally"
 
-  return `Saved ${new Intl.DateTimeFormat(undefined, {
+  return `Local save ${new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
     minute: "2-digit",
   }).format(savedAt)}`
@@ -199,6 +199,11 @@ export function EditorWorkspace() {
   const cloudDetails = cloudStatusDetails[cloudStatus]
   const CloudIcon = cloudDetails.icon
   const isCloudBusy = cloudStatus === "connecting" || cloudStatus === "syncing"
+  const canRetryCloud =
+    cloudStatus === "local" || cloudStatus === "offline" || cloudStatus === "error"
+  const cloudTitle =
+    cloudError ??
+    (remoteRevision ? `Cloud revision ${remoteRevision}` : "Cloud workspace not created yet")
 
   React.useEffect(() => {
     setTitle(activeDocument?.name ?? "")
@@ -290,7 +295,7 @@ export function EditorWorkspace() {
           />
         </div>
 
-        <div className="hidden shrink-0 items-center gap-1.5 text-xs text-muted-foreground xl:flex">
+        <div className="hidden shrink-0 items-center gap-1.5 text-xs text-muted-foreground lg:flex">
           <span className="flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-background px-2.5 py-1">
             <Check className="size-3.5 text-success" aria-hidden="true" />
             {formatSavedTime(lastSavedAt)}
@@ -298,12 +303,10 @@ export function EditorWorkspace() {
           <button
             type="button"
             onClick={retryCloudSync}
-            disabled={isCloudBusy || cloudStatus === "conflict"}
-            title={
-              cloudError ??
-              (remoteRevision ? `Cloud revision ${remoteRevision}` : "Cloud workspace not created yet")
-            }
-            className="flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-background px-2.5 py-1 transition-colors hover:bg-muted disabled:cursor-default disabled:opacity-70"
+            disabled={!canRetryCloud}
+            aria-label={canRetryCloud ? `Retry cloud sync: ${cloudDetails.label}` : cloudDetails.label}
+            title={cloudTitle}
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-background px-2.5 py-1 transition-colors hover:bg-muted disabled:cursor-default disabled:opacity-100 disabled:hover:bg-background"
           >
             <CloudIcon
               className={cn(
@@ -320,11 +323,11 @@ export function EditorWorkspace() {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 shrink-0 xl:hidden"
-          aria-label={cloudDetails.label}
-          title={cloudError ?? cloudDetails.label}
+          className="size-8 shrink-0 lg:hidden"
+          aria-label={canRetryCloud ? `Retry cloud sync: ${cloudDetails.label}` : cloudDetails.label}
+          title={cloudTitle}
           onClick={retryCloudSync}
-          disabled={isCloudBusy || cloudStatus === "conflict"}
+          disabled={!canRetryCloud}
         >
           <CloudIcon
             className={cn(
