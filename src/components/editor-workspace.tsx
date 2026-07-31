@@ -69,7 +69,7 @@ export function EditorWorkspace() {
 
   if (!activeDocument || activeDocument.type !== "document") {
     return (
-      <main className="flex min-h-0 flex-1 items-center justify-center bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.92),transparent_42%),linear-gradient(135deg,#f4f2ed,#eeece7)] p-6">
+      <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.92),transparent_42%),linear-gradient(135deg,#f4f2ed,#eeece7)] p-6">
         <div className="max-w-sm rounded-3xl border border-black/5 bg-white/72 p-8 text-center shadow-[0_20px_80px_-45px_rgba(24,24,27,0.45)] backdrop-blur-xl">
           <div className="mx-auto mb-4 flex size-11 items-center justify-center rounded-2xl bg-zinc-950 text-white">
             <Sparkles className="size-5" />
@@ -84,10 +84,10 @@ export function EditorWorkspace() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/70 bg-background/80 px-3 backdrop-blur-xl md:px-4">
-        <SidebarTrigger className="-ml-1" />
-        <Separator orientation="vertical" className="mx-1 h-4" />
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <header className="flex h-14 min-w-0 shrink-0 items-center gap-2 border-b border-border/70 bg-background/88 px-3 backdrop-blur-xl md:px-4">
+        <SidebarTrigger className="-ml-1 shrink-0" />
+        <Separator orientation="vertical" className="mx-1 h-4 shrink-0" />
         <div className="min-w-0 flex-1">
           <input
             value={title}
@@ -101,12 +101,12 @@ export function EditorWorkspace() {
               }
             }}
             aria-label="Document title"
-            className="block h-8 w-full min-w-0 truncate rounded-md bg-transparent px-2 text-sm font-medium tracking-[-0.01em] outline-none transition-colors hover:bg-muted/55 focus:bg-muted/70 md:max-w-md"
+            className="block h-8 w-full min-w-0 truncate rounded-lg bg-transparent px-2 text-sm font-medium tracking-[-0.01em] outline-none transition-colors hover:bg-muted/55 focus:bg-muted/70 md:max-w-md"
           />
         </div>
 
-        <div className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
-          <span className="flex items-center gap-1.5 rounded-full border border-border/75 bg-background/75 px-2.5 py-1">
+        <div className="hidden shrink-0 items-center gap-1.5 text-xs text-muted-foreground lg:flex">
+          <span className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border/75 bg-background/75 px-2.5 py-1">
             <Check className="size-3.5 text-emerald-600" aria-hidden="true" />
             {formatSavedTime(lastSavedAt)}
           </span>
@@ -117,7 +117,7 @@ export function EditorWorkspace() {
               cloudError ??
               (remoteRevision ? `Cloud revision ${remoteRevision}` : "Cloud workspace not created yet")
             }
-            className="flex items-center gap-1.5 rounded-full border border-border/75 bg-background/75 px-2.5 py-1 transition-colors hover:bg-muted"
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border/75 bg-background/75 px-2.5 py-1 transition-colors hover:bg-muted"
           >
             <CloudIcon
               className={cn(
@@ -131,17 +131,42 @@ export function EditorWorkspace() {
           </button>
         </div>
 
-        <Button variant="outline" size="sm" className="hidden gap-1.5 shadow-none md:inline-flex">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0 lg:hidden"
+          aria-label={cloudDetails.label}
+          title={cloudError ?? cloudDetails.label}
+          onClick={retryCloudSync}
+        >
+          <CloudIcon
+            className={cn(
+              "size-4",
+              cloudDetails.className,
+              isCloudBusy && "animate-spin",
+            )}
+          />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="hidden shrink-0 gap-1.5 shadow-none xl:inline-flex"
+        >
           <Share2 className="size-3.5" />
           Share
         </Button>
-        <Button variant="ghost" size="icon" className="size-8" aria-label="More actions">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0"
+          aria-label="More actions"
+        >
           <MoreHorizontal className="size-4" />
         </Button>
       </header>
 
-      <main className="editor-stage min-h-0 flex-1 overflow-hidden p-2 sm:p-3 lg:p-4">
-        <section className="editor-frame mx-auto h-full max-w-[1180px] overflow-hidden rounded-2xl border border-black/5 bg-background shadow-[0_30px_100px_-52px_rgba(24,24,27,0.55)] ring-1 ring-white/70 dark:ring-white/5">
+      <main className="editor-stage min-h-0 min-w-0 flex-1 overflow-hidden p-2 sm:p-3 lg:p-4">
+        <section className="editor-frame mx-auto h-full min-h-0 w-full min-w-0 max-w-[1360px] overflow-hidden rounded-2xl border border-black/5 bg-background shadow-[0_30px_100px_-52px_rgba(24,24,27,0.55)] ring-1 ring-white/70 dark:ring-white/5">
           <SimpleEditor
             key={activeDocument.id}
             content={activeDocument.content}
