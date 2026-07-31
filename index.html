@@ -8,6 +8,23 @@
       name="description"
       content="Write Skill — a focused, local-first document workspace built with React and Tiptap."
     />
+    <script>
+      ;(() => {
+        try {
+          const preference = localStorage.getItem("write-skill-theme")
+          const isDark =
+            preference === "dark" ||
+            (preference !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+          document.documentElement.classList.toggle("dark", isDark)
+          document.documentElement.style.colorScheme = isDark ? "dark" : "light"
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute("content", isDark ? "#1b1a18" : "#f8f7f4")
+        } catch {
+          // Keep the light theme when storage or media queries are unavailable.
+        }
+      })()
+    </script>
     <title>Write Skill</title>
   </head>
   <body>
