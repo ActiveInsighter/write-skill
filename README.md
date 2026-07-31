@@ -9,7 +9,16 @@ A modern cloud-backed document editor built with React 19, TypeScript, Vite, Tai
 - D1 stores each workspace as validated Tiptap/tree JSON with an atomic revision number.
 - A database trigger archives the previous snapshot on every successful update and retains the latest 50 revisions.
 - Anonymous workspaces are protected by a browser-generated high-entropy access token; only its SHA-256 hash is stored in D1.
-- Zustand remains the offline/local cache. Changes are debounced and synchronized to D1 when connectivity is available.
+- Zustand remains the offline/local cache. Document changes are debounced and synchronized to D1 when connectivity is available.
+- Local and cloud copies are never silently overwritten when both have changed; the editor asks the user which copy to keep.
+
+## Editor behavior
+
+- The sidebar uses Headless Tree for keyboard navigation, renaming, ordered drag-and-drop, and keyboard drag-and-drop.
+- Right-click or long-press a file or folder for create, duplicate, rename, and delete actions.
+- Search results are presented separately from the tree so hidden tree items cannot interfere with keyboard focus.
+- The Tiptap Simple Editor toolbar remains horizontally scrollable on narrow screens.
+- Image rendering is supported, but upload controls remain hidden until a persistent object-storage upload path is configured.
 
 ## API
 
@@ -47,9 +56,11 @@ npm run typecheck
 npm run build
 ```
 
+The `Verify application` workflow runs for every pushed branch and for pull requests targeting `main`.
+
 ## Cloudflare deployment
 
-The `Deploy Cloudflare` GitHub Action runs on `main` and `feat/cloudflare-worker-d1`.
+The `Deploy Cloudflare` GitHub Action runs after changes are pushed or merged to `main`.
 It performs the following steps:
 
 1. Builds and typechecks the frontend and Worker.
@@ -57,6 +68,7 @@ It performs the following steps:
 3. Writes the resolved D1 database ID into the temporary CI copy of `wrangler.jsonc`.
 4. Applies pending migrations.
 5. Deploys the Worker and SPA together as `write-skill`.
+6. Runs an API and D1 smoke test against the deployed Worker.
 
 Required GitHub secrets:
 
