@@ -24,6 +24,7 @@ import {
   Trash2,
 } from "lucide-react"
 
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useSidebar } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import { MAX_NODE_NAME_LENGTH } from "@/lib/workspace-snapshot"
@@ -90,14 +91,17 @@ const hasTreeDataChanged = (previous: WorkspaceNodes, next: WorkspaceNodes) => {
 }
 
 const menuPopupClassName =
-  "min-w-52 rounded-lg border bg-popover p-1.5 text-popover-foreground shadow-lg outline-none"
+  "min-w-52 rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-xl outline-none transition duration-100 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0"
 const menuItemClassName =
-  "flex h-9 cursor-default select-none items-center gap-2 rounded-md px-2.5 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+  "flex h-9 cursor-default select-none items-center gap-2 rounded-lg px-2.5 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
 const menuShortcutClassName = "ml-auto text-[0.68rem] tracking-wide text-muted-foreground"
+const folderIconClassName = "text-sidebar-foreground/60"
+const fileIconClassName = "text-sidebar-foreground/48"
 
 export function DocumentTree() {
   const { isMobile, setOpenMobile } = useSidebar()
   const [nodes, setNodes] = React.useState(() => useWorkspaceStore.getState().nodes)
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null)
   const activeDocumentId = useWorkspaceStore((state) => state.activeDocumentId)
   const expandedItems = useWorkspaceStore((state) => state.expandedItems)
   const searchQuery = useWorkspaceStore((state) => state.searchQuery)
@@ -251,9 +255,9 @@ export function DocumentTree() {
               )}
             >
               {isFolder ? (
-                <Folder className="size-4 shrink-0 text-amber-600/85" aria-hidden="true" />
+                <Folder className={cn("size-4 shrink-0", folderIconClassName)} aria-hidden="true" />
               ) : (
-                <FileText className="size-4 shrink-0 text-sidebar-foreground/55" aria-hidden="true" />
+                <FileText className={cn("size-4 shrink-0", fileIconClassName)} aria-hidden="true" />
               )}
               <span className="grid min-w-0 flex-1 leading-tight">
                 <span className="truncate text-sm">{node.name}</span>
@@ -268,6 +272,14 @@ export function DocumentTree() {
     )
   }
 
+  const treeItems = tree.getItems()
+  const pendingDeleteNode = pendingDeleteId ? nodes[pendingDeleteId] : undefined
+  const deleteDescription = pendingDeleteNode
+    ? pendingDeleteNode.type === "folder" && pendingDeleteNode.children.length > 0
+      ? `“${pendingDeleteNode.name}” and everything inside it will be removed from this workspace.`
+      : `“${pendingDeleteNode.name}” will be removed from this workspace.`
+    : "This item will be removed from the workspace."
+
   return (
     <div
       {...tree.getContainerProps()}
@@ -276,20 +288,40 @@ export function DocumentTree() {
     >
       <AssistiveTreeDescription tree={tree} />
 
-      {tree.getItems().map((item) => {
+      {treeItems.length === 0 && (
+        <div className="mx-1 flex flex-col items-center rounded-xl border border-dashed border-sidebar-border bg-sidebar-accent/25 px-4 py-7 text-center">
+          <FileText className="size-5 text-sidebar-foreground/45" aria-hidden="true" />
+          <p className="mt-2 text-xs font-medium text-sidebar-foreground/75">Workspace is empty</p>
+          <p className="mt-1 text-[0.68rem] leading-5 text-sidebar-foreground/45">
+            Create a document or folder to begin.
+          </p>
+          <div className="mt-3 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => createAndOpenDocument()}
+              className="inline-flex h-7 items-center gap-1 rounded-md bg-sidebar-primary px-2 text-[0.68rem] font-medium text-sidebar-primary-foreground outline-none hover:bg-sidebar-primary/85 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            >
+              <FilePlus2 className="size-3" aria-hidden="true" />
+              Document
+            </button>
+            <button
+              type="button"
+              onClick={() => createFolder()}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-sidebar-border bg-sidebar px-2 text-[0.68rem] font-medium outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            >
+              <FolderPlus className="size-3" aria-hidden="true" />
+              Folder
+            </button>
+          </div>
+        </div>
+      )}
+
+      {treeItems.map((item) => {
         const node = item.getItemData()
         const isFolder = node.type === "folder"
         const isActive = node.id === activeDocumentId
         const level = Math.max(0, item.getItemMeta().level - 1)
         const itemProps = item.getProps()
-
-        const requestDelete = () => {
-          const description =
-            isFolder && node.children.length > 0
-              ? `Delete “${node.name}” and everything inside it?`
-              : `Delete “${node.name}”?`
-          if (window.confirm(description)) deleteNode(node.id)
-        }
 
         return (
           <ContextMenu.Root key={item.getId()}>
@@ -314,7 +346,7 @@ export function DocumentTree() {
                 {...item.getDragHandleProps()}
                 aria-label={`Drag ${node.name}`}
                 title="Drag to move"
-                className="flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-sidebar-foreground/30 opacity-0 transition hover:bg-sidebar-accent hover:text-sidebar-foreground/70 active:cursor-grabbing group-focus-within/tree-item:opacity-100 group-hover/tree-item:opacity-100"
+                className="document-tree-drag-handle flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-sidebar-foreground/30 opacity-0 transition hover:bg-sidebar-accent hover:text-sidebar-foreground/70 active:cursor-grabbing group-focus-within/tree-item:opacity-100 group-hover/tree-item:opacity-100"
                 onClick={(event) => event.stopPropagation()}
                 onDoubleClick={(event) => event.stopPropagation()}
               >
@@ -335,12 +367,21 @@ export function DocumentTree() {
 
               {isFolder ? (
                 item.isExpanded() ? (
-                  <FolderOpen className="size-4 shrink-0 text-amber-600/85" aria-hidden="true" />
+                  <FolderOpen
+                    className={cn("size-4 shrink-0", folderIconClassName)}
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Folder className="size-4 shrink-0 text-amber-600/85" aria-hidden="true" />
+                  <Folder
+                    className={cn("size-4 shrink-0", folderIconClassName)}
+                    aria-hidden="true"
+                  />
                 )
               ) : (
-                <FileText className="size-4 shrink-0 text-sidebar-foreground/55" aria-hidden="true" />
+                <FileText
+                  className={cn("size-4 shrink-0", fileIconClassName)}
+                  aria-hidden="true"
+                />
               )}
 
               {item.isRenaming() ? (
@@ -400,7 +441,7 @@ export function DocumentTree() {
                       menuItemClassName,
                       "text-destructive data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive",
                     )}
-                    onClick={requestDelete}
+                    onClick={() => setPendingDeleteId(node.id)}
                   >
                     <Trash2 className="size-4" />
                     Delete
@@ -415,6 +456,20 @@ export function DocumentTree() {
       <div
         style={tree.getDragLineStyle()}
         className="pointer-events-none z-30 h-0.5 rounded-full bg-primary shadow-[0_0_0_1px_color-mix(in_oklab,var(--sidebar)_75%,transparent)] before:absolute before:-left-1 before:-top-[3px] before:size-2 before:rounded-full before:border-2 before:border-primary before:bg-sidebar"
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteNode)}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteId(null)
+        }}
+        title={pendingDeleteNode?.type === "folder" ? "Delete folder?" : "Delete document?"}
+        description={deleteDescription}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => {
+          if (pendingDeleteId) deleteNode(pendingDeleteId)
+        }}
       />
     </div>
   )
