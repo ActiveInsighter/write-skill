@@ -87,7 +87,7 @@ export function AppSidebar() {
     <Sidebar collapsible="offcanvas" variant="sidebar">
       <SidebarHeader className="gap-3 border-b border-sidebar-border px-3 py-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex aspect-square size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+          <div className="flex aspect-square size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
             <Sparkles className="size-4" aria-hidden="true" />
           </div>
           <div className="grid min-w-0 flex-1 text-left leading-tight">
@@ -166,8 +166,10 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border px-3 py-3">
+      <SidebarFooter className="gap-2 border-t border-sidebar-border px-3 py-3">
         <div
+          role="status"
+          aria-live="polite"
           className="flex min-w-0 items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/35 px-2.5 py-2"
           title={cloudError ?? cloudDetails.detail}
         >
@@ -185,22 +187,27 @@ export function AppSidebar() {
               {cloudError ?? cloudDetails.detail}
             </span>
           </div>
-          <div className="flex shrink-0 items-center gap-0.5">
-            {canRetryCloud && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-7 text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                onClick={retryCloudSync}
-                aria-label="Retry cloud sync"
-                title="Retry cloud sync"
-              >
-                <RefreshCw className="size-3.5" aria-hidden="true" />
-              </Button>
-            )}
-            <ThemeToggle className="text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground" />
+          {canRetryCloud && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7 text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              onClick={retryCloudSync}
+              aria-label="Retry cloud sync"
+              title="Retry cloud sync"
+            >
+              <RefreshCw className="size-3.5" aria-hidden="true" />
+            </Button>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between px-1">
+          <div className="grid leading-tight">
+            <span className="text-xs font-medium text-sidebar-foreground/75">Appearance</span>
+            <span className="text-[0.68rem] text-sidebar-foreground/45">Light or dark theme</span>
           </div>
+          <ThemeToggle className="text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground" />
         </div>
       </SidebarFooter>
 
