@@ -1,8 +1,9 @@
+import { Moon, Sun } from "lucide-react"
 import { useEffect, useState } from "react"
 
-import { Button } from "@/components/tiptap-ui-primitive/button"
-import { MoonStarIcon } from "@/components/tiptap-icons/moon-star-icon"
-import { SunIcon } from "@/components/tiptap-icons/sun-icon"
+import { Button } from "@/components/ui/button"
+import { useMediaQuery } from "@/hooks/use-media-query"
+import { cn } from "@/lib/utils"
 
 const THEME_STORAGE_KEY = "write-skill-theme"
 type ThemePreference = "light" | "dark" | null
@@ -24,20 +25,11 @@ const applyTheme = (isDarkMode: boolean) => {
     ?.setAttribute("content", isDarkMode ? "#1b1a18" : "#f8f7f4")
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string }) {
   const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference)
-  const [systemDarkMode, setSystemDarkMode] = useState(() =>
-    window.matchMedia("(prefers-color-scheme: dark)").matches,
-  )
+  const systemDarkMode = useMediaQuery("(prefers-color-scheme: dark)")
   const isDarkMode =
     themePreference === "dark" || (themePreference === null && systemDarkMode)
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-    const handleChange = () => setSystemDarkMode(mediaQuery.matches)
-    mediaQuery.addEventListener("change", handleChange)
-    return () => mediaQuery.removeEventListener("change", handleChange)
-  }, [])
 
   useEffect(() => {
     applyTheme(isDarkMode)
@@ -45,24 +37,32 @@ export function ThemeToggle() {
 
   const toggleDarkMode = () => {
     const nextPreference: Exclude<ThemePreference, null> = isDarkMode ? "light" : "dark"
+
     try {
       localStorage.setItem(THEME_STORAGE_KEY, nextPreference)
     } catch {
-      // The visual preference still applies for this session when storage is unavailable.
+      // The visual preference still applies for this session.
     }
+
     setThemePreference(nextPreference)
   }
 
+  const nextTheme = isDarkMode ? "light" : "dark"
+
   return (
     <Button
-      onClick={toggleDarkMode}
-      aria-label={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
+      type="button"
       variant="ghost"
+      size="icon"
+      className={cn("size-7 shrink-0", className)}
+      onClick={toggleDarkMode}
+      aria-label={`Switch to ${nextTheme} mode`}
+      title={`Switch to ${nextTheme} mode`}
     >
       {isDarkMode ? (
-        <SunIcon className="tiptap-button-icon" />
+        <Sun className="size-3.5" aria-hidden="true" />
       ) : (
-        <MoonStarIcon className="tiptap-button-icon" />
+        <Moon className="size-3.5" aria-hidden="true" />
       )}
     </Button>
   )

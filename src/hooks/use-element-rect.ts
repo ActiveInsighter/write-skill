@@ -101,28 +101,29 @@ export function useElementRect({
     const targetElement = getTargetElement()
     if (!targetElement) return
 
-    updateRect()
-    const cleanup: Array<() => void> = []
-
-    if (useResizeObserver && hasResizeObserver) {
-      const resizeObserver = new ResizeObserver(() => {
-        window.requestAnimationFrame(updateRect)
+    let animationFrame: number | null = null
+    const scheduleUpdate = () => {
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame)
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null
+        updateRect()
       })
-      resizeObserver.observe(targetElement)
-      cleanup.push(() => resizeObserver.disconnect())
     }
 
-    const handleUpdate = () => updateRect()
-    window.addEventListener("scroll", handleUpdate, { capture: true, passive: true })
-    window.addEventListener("resize", handleUpdate, { passive: true })
+    updateRect()
 
-    cleanup.push(() => {
-      window.removeEventListener("scroll", handleUpdate, true)
-      window.removeEventListener("resize", handleUpdate)
-    })
+    const resizeObserver =
+      useResizeObserver && hasResizeObserver ? new ResizeObserver(scheduleUpdate) : null
+    resizeObserver?.observe(targetElement)
+
+    window.addEventListener("scroll", scheduleUpdate, { capture: true, passive: true })
+    window.addEventListener("resize", scheduleUpdate, { passive: true })
 
     return () => {
-      cleanup.forEach((dispose) => dispose())
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame)
+      resizeObserver?.disconnect()
+      window.removeEventListener("scroll", scheduleUpdate, true)
+      window.removeEventListener("resize", scheduleUpdate)
       setRect(initialRect)
     }
   }, [enabled, getTargetElement, updateRect, useResizeObserver])

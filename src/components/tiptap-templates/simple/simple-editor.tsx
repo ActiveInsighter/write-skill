@@ -56,7 +56,6 @@ import { useCursorVisibility } from "@/hooks/use-cursor-visibility"
 import { useRefRect } from "@/hooks/use-element-rect"
 import { useIsBreakpoint } from "@/hooks/use-is-breakpoint"
 import { useWindowSize } from "@/hooks/use-window-size"
-import { ThemeToggle } from "@/components/tiptap-templates/simple/theme-toggle"
 
 import "@/components/tiptap-templates/simple/simple-editor.scss"
 import starterContent from "@/components/tiptap-templates/simple/data/content.json"
@@ -109,10 +108,6 @@ const MainToolbarContent = ({
       <TextAlignButton align="center" />
       <TextAlignButton align="right" />
       <TextAlignButton align="justify" />
-    </ToolbarGroup>
-    <ToolbarSeparator />
-    <ToolbarGroup>
-      <ThemeToggle />
     </ToolbarGroup>
   </>
 )

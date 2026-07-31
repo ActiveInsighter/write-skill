@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 
 import { DocumentTree } from "@/components/document-tree"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import {
   Sidebar,
@@ -167,7 +168,7 @@ export function AppSidebar() {
 
       <SidebarFooter className="border-t border-sidebar-border px-3 py-3">
         <div
-          className="flex min-w-0 items-center gap-2.5 rounded-lg border border-sidebar-border bg-sidebar-accent/35 px-2.5 py-2"
+          className="flex min-w-0 items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/35 px-2.5 py-2"
           title={cloudError ?? cloudDetails.detail}
         >
           <CloudIcon
@@ -184,19 +185,22 @@ export function AppSidebar() {
               {cloudError ?? cloudDetails.detail}
             </span>
           </div>
-          {canRetryCloud && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7 shrink-0 text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              onClick={retryCloudSync}
-              aria-label="Retry cloud sync"
-              title="Retry cloud sync"
-            >
-              <RefreshCw className="size-3.5" aria-hidden="true" />
-            </Button>
-          )}
+          <div className="flex shrink-0 items-center gap-0.5">
+            {canRetryCloud && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                onClick={retryCloudSync}
+                aria-label="Retry cloud sync"
+                title="Retry cloud sync"
+              >
+                <RefreshCw className="size-3.5" aria-hidden="true" />
+              </Button>
+            )}
+            <ThemeToggle className="text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground" />
+          </div>
         </div>
       </SidebarFooter>
 
