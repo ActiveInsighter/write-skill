@@ -1,32 +1,24 @@
-import type { Editor } from "@tiptap/react"
-import { useWindowSize } from "@/hooks/use-window-size"
-import { useBodyRect } from "@/hooks/use-element-rect"
+import type { RefObject } from "react"
 import { useEffect } from "react"
+import type { Editor } from "@tiptap/react"
+
+import { useBodyRect } from "@/hooks/use-element-rect"
+import { useWindowSize } from "@/hooks/use-window-size"
 
 export interface CursorVisibilityOptions {
-  /**
-   * The Tiptap editor instance
-   */
   editor?: Editor | null
-  /**
-   * Reference to the toolbar element that may obscure the cursor
-   */
   overlayHeight?: number
+  scrollContainer?: RefObject<HTMLElement | null>
 }
 
-/**
- * Custom hook that ensures the cursor remains visible when typing in a Tiptap editor.
- * Automatically scrolls the window when the cursor would be hidden by the toolbar.
- *
- * @param options.editor The Tiptap editor instance
- * @param options.overlayHeight Toolbar height to account for
- * @returns The bounding rect of the body
- */
+const CURSOR_MARGIN = 24
+
 export function useCursorVisibility({
   editor,
   overlayHeight = 0,
+  scrollContainer,
 }: CursorVisibilityOptions) {
-  const { height: windowHeight } = useWindowSize()
+  const { height: viewportHeight, offsetTop: viewportOffsetTop } = useWindowSize()
   const rect = useBodyRect({
     enabled: true,
     throttleMs: 100,
@@ -34,36 +26,50 @@ export function useCursorVisibility({
   })
 
   useEffect(() => {
+    if (!editor) return
+
+    let animationFrame: number | null = null
+
     const ensureCursorVisibility = () => {
-      if (!editor) return
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame)
 
-      const { state, view } = editor
-      if (!view.hasFocus()) return
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null
+        if (editor.isDestroyed || !editor.view.hasFocus() || viewportHeight <= 0) return
 
-      // Get current cursor position coordinates
-      const { from } = state.selection
-      const cursorCoords = view.coordsAtPos(from)
+        const container = scrollContainer?.current
+        if (!container) return
 
-      if (windowHeight < rect.height && cursorCoords) {
-        const availableSpace = windowHeight - cursorCoords.top
+        const cursor = editor.view.coordsAtPos(editor.state.selection.from)
+        const containerRect = container.getBoundingClientRect()
+        const visibleTop = Math.max(containerRect.top, viewportOffsetTop) + CURSOR_MARGIN
+        const visibleBottom =
+          Math.min(containerRect.bottom, viewportOffsetTop + viewportHeight) -
+          overlayHeight -
+          CURSOR_MARGIN
 
-        // If the cursor is hidden behind the overlay or offscreen, scroll it into view
-        if (availableSpace < overlayHeight) {
-          const targetCursorY = Math.max(windowHeight / 2, overlayHeight)
-          const currentScrollY = window.scrollY
-          const cursorAbsoluteY = cursorCoords.top + currentScrollY
-          const newScrollY = cursorAbsoluteY - targetCursorY
+        let scrollDelta = 0
+        if (cursor.bottom > visibleBottom) scrollDelta = cursor.bottom - visibleBottom
+        else if (cursor.top < visibleTop) scrollDelta = cursor.top - visibleTop
 
-          window.scrollTo({
-            top: Math.max(0, newScrollY),
-            behavior: "smooth",
-          })
+        if (Math.abs(scrollDelta) > 1) {
+          container.scrollBy({ top: scrollDelta, behavior: "auto" })
         }
-      }
+      })
     }
 
+    editor.on("selectionUpdate", ensureCursorVisibility)
+    editor.on("update", ensureCursorVisibility)
+    editor.on("focus", ensureCursorVisibility)
     ensureCursorVisibility()
-  }, [editor, overlayHeight, windowHeight, rect.height])
+
+    return () => {
+      editor.off("selectionUpdate", ensureCursorVisibility)
+      editor.off("update", ensureCursorVisibility)
+      editor.off("focus", ensureCursorVisibility)
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame)
+    }
+  }, [editor, overlayHeight, scrollContainer, viewportHeight, viewportOffsetTop])
 
   return rect
 }
