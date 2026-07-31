@@ -1,25 +1,54 @@
 import * as React from "react"
+import { ContextMenu } from "@base-ui/react/context-menu"
 import {
+  dragAndDropFeature,
   hotkeysCoreFeature,
+  isOrderedDragTarget,
+  keyboardDragAndDropFeature,
   renamingFeature,
   selectionFeature,
   syncDataLoaderFeature,
 } from "@headless-tree/core"
-import { useTree } from "@headless-tree/react"
+import { AssistiveTreeDescription, useTree } from "@headless-tree/react"
 import {
   ChevronRight,
+  Copy,
+  FilePlus2,
   FileText,
   Folder,
   FolderOpen,
+  FolderPlus,
+  GripVertical,
+  Pencil,
   SearchX,
+  Trash2,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store/workspace-store"
-import type { WorkspaceNode } from "@/types/document"
+import type { WorkspaceNode, WorkspaceNodes } from "@/types/document"
 
 const resolveStateUpdate = <T,>(value: T | ((current: T) => T), current: T) =>
   typeof value === "function" ? (value as (current: T) => T)(current) : value
+
+const isNodeInsideSubtree = (
+  nodes: WorkspaceNodes,
+  nodeId: string,
+  subtreeRootId: string,
+) => {
+  let currentId: string | null = nodeId
+  while (currentId) {
+    if (currentId === subtreeRootId) return true
+    currentId = nodes[currentId]?.parentId ?? null
+  }
+  return false
+}
+
+const menuPopupClassName =
+  "min-w-52 rounded-xl border border-border/80 bg-popover p-1.5 text-popover-foreground shadow-xl shadow-black/10 outline-none"
+const menuItemClassName =
+  "flex h-9 cursor-default select-none items-center gap-2 rounded-lg px-2.5 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+const menuShortcutClassName = "ml-auto text-[0.68rem] tracking-wide text-muted-foreground"
 
 export function DocumentTree() {
   const nodes = useWorkspaceStore((state) => state.nodes)
@@ -29,9 +58,17 @@ export function DocumentTree() {
   const setExpandedItems = useWorkspaceStore((state) => state.setExpandedItems)
   const selectDocument = useWorkspaceStore((state) => state.selectDocument)
   const renameNode = useWorkspaceStore((state) => state.renameNode)
+  const createDocument = useWorkspaceStore((state) => state.createDocument)
+  const createFolder = useWorkspaceStore((state) => state.createFolder)
+  const duplicateNode = useWorkspaceStore((state) => state.duplicateNode)
+  const moveNodes = useWorkspaceStore((state) => state.moveNodes)
+  const deleteNode = useWorkspaceStore((state) => state.deleteNode)
 
   const tree = useTree<WorkspaceNode>({
     rootItemId: "root",
+    indent: 18,
+    canReorder: true,
+    seperateDragHandle: true,
     getItemName: (item) => item.getItemData().name,
     isItemFolder: (item) => item.getItemData().type === "folder",
     dataLoader: {
@@ -46,11 +83,32 @@ export function DocumentTree() {
     },
     onRename: (item, value) => renameNode(item.getId(), value),
     canRename: (item) => item.getId() !== "root",
+    canDrag: (items) =>
+      searchQuery.trim().length === 0 && items.every((item) => item.getId() !== "root"),
+    canDrop: (items, target) => {
+      const parentId = target.item.getId()
+      if (nodes[parentId]?.type !== "folder") return false
+
+      return items.every(
+        (item) =>
+          item.getId() !== parentId &&
+          !isNodeInsideSubtree(nodes, parentId, item.getId()),
+      )
+    },
+    onDrop: (items, target) => {
+      moveNodes(
+        items.map((item) => item.getId()),
+        target.item.getId(),
+        isOrderedDragTarget(target) ? target.insertionIndex : undefined,
+      )
+    },
     features: [
       syncDataLoaderFeature,
       selectionFeature,
       hotkeysCoreFeature,
       renamingFeature,
+      dragAndDropFeature,
+      keyboardDragAndDropFeature,
     ],
   })
 
@@ -61,8 +119,7 @@ export function DocumentTree() {
   const query = searchQuery.trim().toLocaleLowerCase()
   const items = tree.getItems().filter((item) => {
     if (!query) return true
-    const node = item.getItemData()
-    return node.name.toLocaleLowerCase().includes(query)
+    return item.getItemData().name.toLocaleLowerCase().includes(query)
   })
 
   if (query && items.length === 0) {
@@ -78,64 +135,157 @@ export function DocumentTree() {
     <div
       {...tree.getContainerProps()}
       aria-label="Document directory"
-      className="flex min-w-0 flex-col gap-0.5 outline-none"
+      className="relative flex min-h-24 min-w-0 flex-col gap-0.5 outline-none"
     >
+      <AssistiveTreeDescription tree={tree} />
+
+      {query && (
+        <div className="mb-1 rounded-lg bg-sidebar-accent/55 px-2.5 py-2 text-[0.68rem] leading-4 text-sidebar-foreground/55">
+          Dragging is paused while search is active.
+        </div>
+      )}
+
       {items.map((item) => {
         const node = item.getItemData()
         const isFolder = node.type === "folder"
         const isActive = node.id === activeDocumentId
         const level = Math.max(0, item.getItemMeta().level - 1)
+        const itemProps = item.getProps()
+
+        const requestDelete = () => {
+          const description =
+            isFolder && node.children.length > 0
+              ? `Delete “${node.name}” and everything inside it?`
+              : `Delete “${node.name}”?`
+          if (window.confirm(description)) deleteNode(node.id)
+        }
 
         return (
-          <div
-            {...item.getProps()}
-            key={item.getId()}
-            className={cn(
-              "group/tree-item relative flex h-8 min-w-0 cursor-default items-center gap-1.5 rounded-md pr-2 text-sm outline-none transition-colors",
-              "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-              isActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
-              item.isFocused() && !isActive && "bg-sidebar-accent/65",
-            )}
-            style={{ paddingLeft: `${8 + level * 14}px` }}
-            onDoubleClick={(event) => {
-              item.getProps().onDoubleClick?.(event)
-              if (item.getId() !== "root") item.startRenaming()
-            }}
-          >
-            {isFolder ? (
-              <ChevronRight
-                className={cn(
-                  "size-3.5 shrink-0 text-sidebar-foreground/50 transition-transform",
-                  item.isExpanded() && "rotate-90",
-                )}
-                aria-hidden="true"
-              />
-            ) : (
-              <span className="w-3.5 shrink-0" />
-            )}
-
-            {isFolder ? (
-              item.isExpanded() ? (
-                <FolderOpen className="size-4 shrink-0 text-amber-600/80" aria-hidden="true" />
-              ) : (
-                <Folder className="size-4 shrink-0 text-amber-600/80" aria-hidden="true" />
-              )
-            ) : (
-              <FileText className="size-4 shrink-0 text-sidebar-foreground/55" aria-hidden="true" />
-            )}
-
-            {item.isRenaming() ? (
-              <input
-                {...item.getRenameInputProps()}
-                className="h-6 min-w-0 flex-1 rounded border border-sidebar-ring bg-sidebar px-1.5 text-sm outline-none"
+          <ContextMenu.Root key={item.getId()}>
+            <ContextMenu.Trigger
+              {...itemProps}
+              className={cn(
+                "group/tree-item relative flex h-9 min-w-0 cursor-default items-center gap-1 rounded-lg pr-1.5 text-sm outline-none transition-[background-color,color,box-shadow]",
+                "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                isActive &&
+                  "bg-sidebar-accent font-medium text-sidebar-accent-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--sidebar-border)_70%,transparent)]",
+                item.isFocused() && !isActive && "bg-sidebar-accent/65",
+                item.isDragTarget() && "bg-primary/10 ring-1 ring-primary/45",
+              )}
+              style={{ paddingLeft: `${5 + level * 16}px` }}
+              onDoubleClick={(event) => {
+                itemProps.onDoubleClick?.(event)
+                if (item.getId() !== "root") item.startRenaming()
+              }}
+            >
+              <span
+                {...item.getDragHandleProps()}
+                aria-label={`Drag ${node.name}`}
+                title="Drag to move"
+                className="flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-sidebar-foreground/25 opacity-55 transition hover:bg-sidebar-accent hover:text-sidebar-foreground/65 hover:opacity-100 active:cursor-grabbing group-focus-within/tree-item:opacity-100 group-hover/tree-item:opacity-100"
                 onClick={(event) => event.stopPropagation()}
-              />
-            ) : (
-              <span className="min-w-0 flex-1 truncate">{node.name}</span>
-            )}
-          </div>
+                onDoubleClick={(event) => event.stopPropagation()}
+              >
+                <GripVertical className="size-3.5" aria-hidden="true" />
+              </span>
+
+              {isFolder ? (
+                <ChevronRight
+                  className={cn(
+                    "size-3.5 shrink-0 text-sidebar-foreground/45 transition-transform",
+                    item.isExpanded() && "rotate-90",
+                  )}
+                  aria-hidden="true"
+                />
+              ) : (
+                <span className="w-3.5 shrink-0" />
+              )}
+
+              {isFolder ? (
+                item.isExpanded() ? (
+                  <FolderOpen className="size-4 shrink-0 text-amber-600/85" aria-hidden="true" />
+                ) : (
+                  <Folder className="size-4 shrink-0 text-amber-600/85" aria-hidden="true" />
+                )
+              ) : (
+                <FileText
+                  className="size-4 shrink-0 text-sidebar-foreground/55"
+                  aria-hidden="true"
+                />
+              )}
+
+              {item.isRenaming() ? (
+                <input
+                  {...item.getRenameInputProps()}
+                  className="h-7 min-w-0 flex-1 rounded-md border border-sidebar-ring bg-sidebar px-2 text-sm outline-none ring-2 ring-sidebar-ring/20"
+                  onClick={(event) => event.stopPropagation()}
+                />
+              ) : (
+                <span className="min-w-0 flex-1 truncate">{node.name}</span>
+              )}
+            </ContextMenu.Trigger>
+
+            <ContextMenu.Portal>
+              <ContextMenu.Positioner className="z-[100] outline-none" sideOffset={5}>
+                <ContextMenu.Popup className={menuPopupClassName}>
+                  {isFolder && (
+                    <>
+                      <ContextMenu.Item
+                        className={menuItemClassName}
+                        onClick={() => createDocument(node.id)}
+                      >
+                        <FilePlus2 className="size-4 text-muted-foreground" />
+                        New document
+                      </ContextMenu.Item>
+                      <ContextMenu.Item
+                        className={menuItemClassName}
+                        onClick={() => createFolder(node.id)}
+                      >
+                        <FolderPlus className="size-4 text-muted-foreground" />
+                        New folder
+                      </ContextMenu.Item>
+                      <ContextMenu.Separator className="my-1 h-px bg-border" />
+                    </>
+                  )}
+
+                  <ContextMenu.Item
+                    className={menuItemClassName}
+                    onClick={() => duplicateNode(node.id)}
+                  >
+                    <Copy className="size-4 text-muted-foreground" />
+                    Duplicate
+                  </ContextMenu.Item>
+                  <ContextMenu.Item
+                    className={menuItemClassName}
+                    onClick={() => queueMicrotask(() => item.startRenaming())}
+                  >
+                    <Pencil className="size-4 text-muted-foreground" />
+                    Rename
+                    <span className={menuShortcutClassName}>F2</span>
+                  </ContextMenu.Item>
+
+                  <ContextMenu.Separator className="my-1 h-px bg-border" />
+                  <ContextMenu.Item
+                    className={cn(
+                      menuItemClassName,
+                      "text-destructive data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive",
+                    )}
+                    onClick={requestDelete}
+                  >
+                    <Trash2 className="size-4" />
+                    Delete
+                  </ContextMenu.Item>
+                </ContextMenu.Popup>
+              </ContextMenu.Positioner>
+            </ContextMenu.Portal>
+          </ContextMenu.Root>
         )
       })}
+
+      <div
+        style={tree.getDragLineStyle()}
+        className="pointer-events-none z-30 h-0.5 rounded-full bg-primary shadow-[0_0_0_1px_color-mix(in_oklab,var(--sidebar)_75%,transparent)] before:absolute before:-left-1 before:-top-[3px] before:size-2 before:rounded-full before:border-2 before:border-primary before:bg-sidebar"
+      />
     </div>
   )
 }
