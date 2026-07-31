@@ -33,3 +33,14 @@ jobs:
 
       - name: Typecheck and build application
         run: npm run build
+
+      - name: Verify current production deployment
+        if: github.event_name == 'pull_request' && github.head_ref == 'chore/verify-production-cbc4147'
+        env:
+          DEPLOYMENT_URL: https://write-skill.2212148739lbw.workers.dev
+          EXPECTED_ENTRY_ASSET: index-CKXHMpgy.js
+        run: |
+          set -euo pipefail
+          html="$(curl --fail --silent --show-error --retry 5 --retry-all-errors "$DEPLOYMENT_URL/")"
+          grep --fixed-strings --quiet "$EXPECTED_ENTRY_ASSET" <<< "$html"
+          node scripts/smoke-test.mjs "$DEPLOYMENT_URL"
