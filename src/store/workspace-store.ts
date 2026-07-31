@@ -310,7 +310,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const updatedAt = new Date().toISOString()
         const nextNodes = { ...state.nodes }
         const affectedParentIds = new Set<string>([requestedParentId])
-        const originalTargetChildren = state.nodes[requestedParentId].children
 
         for (const nodeId of movedIds) {
           const parentId = nextNodes[nodeId]?.parentId
@@ -326,20 +325,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
 
         const targetChildren = [...nextNodes[requestedParentId].children]
-        const removedBeforeInsertion =
-          insertionIndex === undefined
-            ? 0
-            : movedIds.filter(
-                (nodeId) =>
-                  state.nodes[nodeId]?.parentId === requestedParentId &&
-                  originalTargetChildren.indexOf(nodeId) < insertionIndex,
-              ).length
-        const adjustedInsertionIndex =
-          insertionIndex === undefined ? undefined : insertionIndex - removedBeforeInsertion
         const safeInsertionIndex =
-          adjustedInsertionIndex === undefined
+          insertionIndex === undefined
             ? targetChildren.length
-            : Math.max(0, Math.min(adjustedInsertionIndex, targetChildren.length))
+            : Math.max(0, Math.min(insertionIndex, targetChildren.length))
         targetChildren.splice(safeInsertionIndex, 0, ...movedIds)
         nextNodes[requestedParentId] = {
           ...nextNodes[requestedParentId],
