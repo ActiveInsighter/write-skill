@@ -25,6 +25,7 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { MAX_NODE_NAME_LENGTH } from "@/lib/workspace-snapshot"
 import { useWorkspaceStore } from "@/store/workspace-store"
 import type { WorkspaceNode, WorkspaceNodes } from "@/types/document"
 
@@ -36,9 +37,12 @@ const isNodeInsideSubtree = (
   nodeId: string,
   subtreeRootId: string,
 ) => {
+  const visited = new Set<string>()
   let currentId: string | null = nodeId
-  while (currentId) {
+
+  while (currentId && !visited.has(currentId)) {
     if (currentId === subtreeRootId) return true
+    visited.add(currentId)
     currentId = nodes[currentId]?.parentId ?? null
   }
   return false
@@ -46,9 +50,11 @@ const isNodeInsideSubtree = (
 
 const getNodePath = (nodes: WorkspaceNodes, nodeId: string) => {
   const path: string[] = []
+  const visited = new Set<string>()
   let parentId = nodes[nodeId]?.parentId ?? null
 
-  while (parentId && parentId !== "root") {
+  while (parentId && parentId !== "root" && !visited.has(parentId)) {
+    visited.add(parentId)
     const parent = nodes[parentId]
     if (!parent) break
     path.unshift(parent.name)
@@ -78,6 +84,7 @@ export function DocumentTree() {
   const duplicateNode = useWorkspaceStore((state) => state.duplicateNode)
   const moveNodes = useWorkspaceStore((state) => state.moveNodes)
   const deleteNode = useWorkspaceStore((state) => state.deleteNode)
+  const deferredSearchQuery = React.useDeferredValue(searchQuery)
 
   const tree = useTree<WorkspaceNode>({
     rootItemId: "root",
@@ -129,22 +136,26 @@ export function DocumentTree() {
     tree.scheduleRebuildTree()
   }, [nodes, tree])
 
-  const query = searchQuery.trim().toLocaleLowerCase()
+  const query = deferredSearchQuery.trim().toLocaleLowerCase()
   const searchResults = React.useMemo(
     () =>
       query
-        ? Object.values(nodes).filter(
-            (node) => node.id !== "root" && node.name.toLocaleLowerCase().includes(query),
-          )
+        ? Object.values(nodes).filter((node) => {
+            if (node.id === "root") return false
+            const searchableText = `${node.name} ${getNodePath(nodes, node.id)}`.toLocaleLowerCase()
+            return searchableText.includes(query)
+          })
         : [],
     [nodes, query],
   )
 
   const openSearchResult = (node: WorkspaceNode) => {
     const foldersToExpand: string[] = []
+    const visited = new Set<string>()
     let currentId: string | null = node.type === "folder" ? node.id : node.parentId
 
-    while (currentId) {
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId)
       if (nodes[currentId]?.type === "folder") foldersToExpand.push(currentId)
       currentId = nodes[currentId]?.parentId ?? null
     }
@@ -159,7 +170,7 @@ export function DocumentTree() {
       return (
         <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-sidebar-foreground/55">
           <SearchX className="size-5" aria-hidden="true" />
-          <p className="text-xs">No matching documents</p>
+          <p className="text-xs">No matching documents or folders</p>
         </div>
       )
     }
@@ -178,6 +189,7 @@ export function DocumentTree() {
               key={node.id}
               type="button"
               onClick={() => openSearchResult(node)}
+              aria-current={isActive ? "page" : undefined}
               className={cn(
                 "flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                 isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
@@ -228,6 +240,7 @@ export function DocumentTree() {
           <ContextMenu.Root key={item.getId()}>
             <ContextMenu.Trigger
               {...itemProps}
+              aria-current={isActive ? "page" : undefined}
               className={cn(
                 "group/tree-item relative flex h-9 min-w-0 cursor-default items-center gap-1 rounded-lg pr-1.5 text-sm outline-none transition-[background-color,color,box-shadow]",
                 "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
@@ -278,6 +291,7 @@ export function DocumentTree() {
               {item.isRenaming() ? (
                 <input
                   {...item.getRenameInputProps()}
+                  maxLength={MAX_NODE_NAME_LENGTH}
                   className="h-7 min-w-0 flex-1 rounded-md border border-sidebar-ring bg-sidebar px-2 text-sm outline-none ring-2 ring-sidebar-ring/20"
                   onClick={(event) => event.stopPropagation()}
                 />
