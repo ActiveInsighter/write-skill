@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { JSONContent } from "@tiptap/core"
 import { EditorContent, EditorContext, useEditor } from "@tiptap/react"
 
-// --- Tiptap Core Extensions ---
 import { StarterKit } from "@tiptap/starter-kit"
 import { Image } from "@tiptap/extension-image"
 import { TaskItem, TaskList } from "@tiptap/extension-list"
@@ -15,7 +14,6 @@ import { Subscript } from "@tiptap/extension-subscript"
 import { Superscript } from "@tiptap/extension-superscript"
 import { Selection } from "@tiptap/extensions"
 
-// --- UI Primitives ---
 import { Button } from "@/components/tiptap-ui-primitive/button"
 import {
   Toolbar,
@@ -23,7 +21,6 @@ import {
   ToolbarSeparator,
 } from "@/components/tiptap-ui-primitive/toolbar"
 
-// --- Tiptap Node ---
 import { HorizontalRule } from "@/components/tiptap-node/horizontal-rule-node/horizontal-rule-node-extension"
 import "@/components/tiptap-node/blockquote-node/blockquote-node.scss"
 import "@/components/tiptap-node/code-block-node/code-block-node.scss"
@@ -33,7 +30,6 @@ import "@/components/tiptap-node/image-node/image-node.scss"
 import "@/components/tiptap-node/heading-node/heading-node.scss"
 import "@/components/tiptap-node/paragraph-node/paragraph-node.scss"
 
-// --- Tiptap UI ---
 import { HeadingDropdownMenu } from "@/components/tiptap-ui/heading-dropdown-menu"
 import { ListDropdownMenu } from "@/components/tiptap-ui/list-dropdown-menu"
 import { BlockquoteButton } from "@/components/tiptap-ui/blockquote-button"
@@ -52,22 +48,16 @@ import { MarkButton } from "@/components/tiptap-ui/mark-button"
 import { TextAlignButton } from "@/components/tiptap-ui/text-align-button"
 import { UndoRedoButton } from "@/components/tiptap-ui/undo-redo-button"
 
-// --- Icons ---
 import { ArrowLeftIcon } from "@/components/tiptap-icons/arrow-left-icon"
 import { HighlighterIcon } from "@/components/tiptap-icons/highlighter-icon"
 import { LinkIcon } from "@/components/tiptap-icons/link-icon"
 
-// --- Hooks ---
+import { useCursorVisibility } from "@/hooks/use-cursor-visibility"
 import { useIsBreakpoint } from "@/hooks/use-is-breakpoint"
 import { useWindowSize } from "@/hooks/use-window-size"
-import { useCursorVisibility } from "@/hooks/use-cursor-visibility"
-
-// --- Components ---
 import { ThemeToggle } from "@/components/tiptap-templates/simple/theme-toggle"
 
-// --- Styles ---
 import "@/components/tiptap-templates/simple/simple-editor.scss"
-
 import starterContent from "@/components/tiptap-templates/simple/data/content.json"
 
 const MainToolbarContent = ({
@@ -78,63 +68,51 @@ const MainToolbarContent = ({
   onHighlighterClick: () => void
   onLinkClick: () => void
   isMobile: boolean
-}) => {
-  return (
-    <>
-      <ToolbarGroup>
-        <UndoRedoButton action="undo" />
-        <UndoRedoButton action="redo" />
-      </ToolbarGroup>
-
-      <ToolbarSeparator />
-
-      <ToolbarGroup>
-        <HeadingDropdownMenu modal={false} levels={[1, 2, 3, 4]} />
-        <ListDropdownMenu modal={false} types={["bulletList", "orderedList", "taskList"]} />
-        <BlockquoteButton />
-        <CodeBlockButton />
-      </ToolbarGroup>
-
-      <ToolbarSeparator />
-
-      <ToolbarGroup>
-        <MarkButton type="bold" />
-        <MarkButton type="italic" />
-        <MarkButton type="strike" />
-        <MarkButton type="code" />
-        <MarkButton type="underline" />
-        {!isMobile ? (
-          <ColorHighlightPopover />
-        ) : (
-          <ColorHighlightPopoverButton onClick={onHighlighterClick} />
-        )}
-        {!isMobile ? <LinkPopover /> : <LinkButton onClick={onLinkClick} />}
-      </ToolbarGroup>
-
-      <ToolbarSeparator />
-
-      <ToolbarGroup>
-        <MarkButton type="superscript" />
-        <MarkButton type="subscript" />
-      </ToolbarGroup>
-
-      <ToolbarSeparator />
-
-      <ToolbarGroup>
-        <TextAlignButton align="left" />
-        <TextAlignButton align="center" />
-        <TextAlignButton align="right" />
-        <TextAlignButton align="justify" />
-      </ToolbarGroup>
-
-      <ToolbarSeparator />
-
-      <ToolbarGroup>
-        <ThemeToggle />
-      </ToolbarGroup>
-    </>
-  )
-}
+}) => (
+  <>
+    <ToolbarGroup>
+      <UndoRedoButton action="undo" />
+      <UndoRedoButton action="redo" />
+    </ToolbarGroup>
+    <ToolbarSeparator />
+    <ToolbarGroup>
+      <HeadingDropdownMenu modal={false} levels={[1, 2, 3, 4]} />
+      <ListDropdownMenu modal={false} types={["bulletList", "orderedList", "taskList"]} />
+      <BlockquoteButton />
+      <CodeBlockButton />
+    </ToolbarGroup>
+    <ToolbarSeparator />
+    <ToolbarGroup>
+      <MarkButton type="bold" />
+      <MarkButton type="italic" />
+      <MarkButton type="strike" />
+      <MarkButton type="code" />
+      <MarkButton type="underline" />
+      {isMobile ? (
+        <ColorHighlightPopoverButton onClick={onHighlighterClick} />
+      ) : (
+        <ColorHighlightPopover />
+      )}
+      {isMobile ? <LinkButton onClick={onLinkClick} /> : <LinkPopover />}
+    </ToolbarGroup>
+    <ToolbarSeparator />
+    <ToolbarGroup>
+      <MarkButton type="superscript" />
+      <MarkButton type="subscript" />
+    </ToolbarGroup>
+    <ToolbarSeparator />
+    <ToolbarGroup>
+      <TextAlignButton align="left" />
+      <TextAlignButton align="center" />
+      <TextAlignButton align="right" />
+      <TextAlignButton align="justify" />
+    </ToolbarGroup>
+    <ToolbarSeparator />
+    <ToolbarGroup>
+      <ThemeToggle />
+    </ToolbarGroup>
+  </>
+)
 
 const MobileToolbarContent = ({
   type,
@@ -154,9 +132,7 @@ const MobileToolbarContent = ({
         )}
       </Button>
     </ToolbarGroup>
-
     <ToolbarSeparator />
-
     {type === "highlighter" ? <ColorHighlightPopoverContent /> : <LinkContent />}
   </>
 )
@@ -168,9 +144,10 @@ export interface SimpleEditorProps {
 
 export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
   const isMobile = useIsBreakpoint()
-  const { height } = useWindowSize()
+  const { height, offsetTop } = useWindowSize()
   const [mobileView, setMobileView] = useState<"main" | "highlighter" | "link">("main")
   const toolbarRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const onUpdateRef = useRef(onUpdate)
   const lastEmittedContentRef = useRef<string | null>(null)
 
@@ -217,10 +194,13 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
   })
 
   const editorContextValue = useMemo(() => ({ editor }), [editor])
-
-  const rect = useCursorVisibility({
+  const toolbarHeight = isMobile
+    ? (toolbarRef.current?.getBoundingClientRect().height ?? 0)
+    : 0
+  const bodyRect = useCursorVisibility({
     editor,
-    overlayHeight: toolbarRef.current?.getBoundingClientRect().height ?? 0,
+    overlayHeight: toolbarHeight,
+    scrollContainer: contentRef,
   })
 
   useEffect(() => {
@@ -235,9 +215,7 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
   }, [content, editor])
 
   useEffect(() => {
-    if (!isMobile && mobileView !== "main") {
-      setMobileView("main")
-    }
+    if (!isMobile && mobileView !== "main") setMobileView("main")
   }, [isMobile, mobileView])
 
   return (
@@ -247,13 +225,13 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
           ref={toolbarRef}
           className="simple-editor-toolbar"
           aria-label="Formatting toolbar"
-          style={{
-            ...(isMobile
+          style={
+            isMobile
               ? {
-                  bottom: `calc(100% - ${height - rect.y}px)`,
+                  bottom: `calc(100% - ${height + offsetTop - bodyRect.y}px)`,
                 }
-              : {}),
-          }}
+              : undefined
+          }
         >
           <div className="simple-editor-toolbar-content">
             {mobileView === "main" ? (
@@ -271,7 +249,12 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
           </div>
         </Toolbar>
 
-        <EditorContent editor={editor} role="presentation" className="simple-editor-content" />
+        <EditorContent
+          ref={contentRef}
+          editor={editor}
+          role="presentation"
+          className="simple-editor-content"
+        />
       </EditorContext.Provider>
     </div>
   )

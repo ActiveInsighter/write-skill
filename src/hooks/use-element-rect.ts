@@ -11,17 +11,11 @@ export interface ElementRectOptions {
    * Defaults to document.body if not provided.
    */
   element?: Element | React.RefObject<Element> | string | null
-  /**
-   * Whether to enable rect tracking
-   */
+  /** Whether to enable rect tracking. */
   enabled?: boolean
-  /**
-   * Throttle delay in milliseconds for rect updates
-   */
+  /** Throttle delay in milliseconds for rect updates. */
   throttleMs?: number
-  /**
-   * Whether to use ResizeObserver for more accurate tracking
-   */
+  /** Whether to use ResizeObserver for more accurate tracking. */
   useResizeObserver?: boolean
 }
 
@@ -38,18 +32,8 @@ const initialRect: RectState = {
 
 const isSSR = typeof window === "undefined"
 const hasResizeObserver = !isSSR && typeof ResizeObserver !== "undefined"
-
-/**
- * Helper function to check if code is running on client side
- */
 const isClientSide = (): boolean => !isSSR
 
-/**
- * Custom hook that tracks an element's bounding rectangle and updates on resize, scroll, etc.
- *
- * @param options Configuration options for element rect tracking
- * @returns The current bounding rectangle of the element
- */
 export function useElementRect({
   element,
   enabled = true,
@@ -60,19 +44,9 @@ export function useElementRect({
 
   const getTargetElement = useCallback((): Element | null => {
     if (!enabled || !isClientSide()) return null
-
-    if (!element) {
-      return document.body
-    }
-
-    if (typeof element === "string") {
-      return document.querySelector(element)
-    }
-
-    if ("current" in element) {
-      return element.current
-    }
-
+    if (!element) return document.body
+    if (typeof element === "string") return document.querySelector(element)
+    if ("current" in element) return element.current
     return element
   }, [element, enabled])
 
@@ -86,21 +60,36 @@ export function useElementRect({
         return
       }
 
-      const newRect = targetElement.getBoundingClientRect()
-      setRect({
-        x: newRect.x,
-        y: newRect.y,
-        width: newRect.width,
-        height: newRect.height,
-        top: newRect.top,
-        right: newRect.right,
-        bottom: newRect.bottom,
-        left: newRect.left,
+      const nextRect = targetElement.getBoundingClientRect()
+      setRect((current) => {
+        if (
+          current.x === nextRect.x &&
+          current.y === nextRect.y &&
+          current.width === nextRect.width &&
+          current.height === nextRect.height &&
+          current.top === nextRect.top &&
+          current.right === nextRect.right &&
+          current.bottom === nextRect.bottom &&
+          current.left === nextRect.left
+        ) {
+          return current
+        }
+
+        return {
+          x: nextRect.x,
+          y: nextRect.y,
+          width: nextRect.width,
+          height: nextRect.height,
+          top: nextRect.top,
+          right: nextRect.right,
+          bottom: nextRect.bottom,
+          left: nextRect.left,
+        }
       })
     },
     throttleMs,
     [enabled, getTargetElement],
-    { leading: true, trailing: true }
+    { leading: true, trailing: true },
   )
 
   useEffect(() => {
@@ -113,8 +102,7 @@ export function useElementRect({
     if (!targetElement) return
 
     updateRect()
-
-    const cleanup: (() => void)[] = []
+    const cleanup: Array<() => void> = []
 
     if (useResizeObserver && hasResizeObserver) {
       const resizeObserver = new ResizeObserver(() => {
@@ -125,17 +113,16 @@ export function useElementRect({
     }
 
     const handleUpdate = () => updateRect()
-
-    window.addEventListener("scroll", handleUpdate, true)
-    window.addEventListener("resize", handleUpdate, true)
+    window.addEventListener("scroll", handleUpdate, { capture: true, passive: true })
+    window.addEventListener("resize", handleUpdate, { passive: true })
 
     cleanup.push(() => {
-      window.removeEventListener("scroll", handleUpdate)
+      window.removeEventListener("scroll", handleUpdate, true)
       window.removeEventListener("resize", handleUpdate)
     })
 
     return () => {
-      cleanup.forEach((fn) => fn())
+      cleanup.forEach((dispose) => dispose())
       setRect(initialRect)
     }
   }, [enabled, getTargetElement, updateRect, useResizeObserver])
@@ -143,11 +130,8 @@ export function useElementRect({
   return rect
 }
 
-/**
- * Convenience hook for tracking document.body rect
- */
 export function useBodyRect(
-  options: Omit<ElementRectOptions, "element"> = {}
+  options: Omit<ElementRectOptions, "element"> = {},
 ): RectState {
   return useElementRect({
     ...options,
@@ -155,12 +139,9 @@ export function useBodyRect(
   })
 }
 
-/**
- * Convenience hook for tracking a ref element's rect
- */
 export function useRefRect<T extends Element>(
   ref: React.RefObject<T>,
-  options: Omit<ElementRectOptions, "element"> = {}
+  options: Omit<ElementRectOptions, "element"> = {},
 ): RectState {
   return useElementRect({ ...options, element: ref })
 }

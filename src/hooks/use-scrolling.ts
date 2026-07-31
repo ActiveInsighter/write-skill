@@ -11,65 +11,49 @@ interface UseScrollingOptions {
 
 export function useScrolling(
   target?: ScrollTarget,
-  options: UseScrollingOptions = {}
+  options: UseScrollingOptions = {},
 ): boolean {
   const { debounce = 150, fallbackToDocument = true } = options
   const [isScrolling, setIsScrolling] = useState(false)
 
   useEffect(() => {
-    // Resolve element or window
     const element: EventTargetWithScroll =
       target && typeof Window !== "undefined" && target instanceof Window
         ? target
         : ((target as RefObject<HTMLElement>)?.current ?? window)
 
-    // Mobile: fallback to document when using window
     const eventTarget: EventTargetWithScroll =
-      fallbackToDocument &&
-      element === window &&
-      typeof document !== "undefined"
+      fallbackToDocument && element === window && typeof document !== "undefined"
         ? document
         : element
 
-    const on = (
-      el: EventTargetWithScroll,
-      event: string,
-      handler: EventListener
-    ) => el.addEventListener(event, handler, true)
-
-    const off = (
-      el: EventTargetWithScroll,
-      event: string,
-      handler: EventListener
-    ) => el.removeEventListener(event, handler)
-
-    let timeout: ReturnType<typeof setTimeout>
+    let timeout: ReturnType<typeof setTimeout> | undefined
     const supportsScrollEnd = element === window && "onscrollend" in window
 
     const handleScroll: EventListener = () => {
-      if (!isScrolling) setIsScrolling(true)
+      setIsScrolling(true)
 
       if (!supportsScrollEnd) {
-        clearTimeout(timeout)
+        if (timeout) clearTimeout(timeout)
         timeout = setTimeout(() => setIsScrolling(false), debounce)
       }
     }
 
     const handleScrollEnd: EventListener = () => setIsScrolling(false)
 
-    on(eventTarget, "scroll", handleScroll)
+    eventTarget.addEventListener("scroll", handleScroll, { capture: true, passive: true })
     if (supportsScrollEnd) {
-      on(eventTarget, "scrollend", handleScrollEnd)
+      eventTarget.addEventListener("scrollend", handleScrollEnd, { capture: true, passive: true })
     }
 
     return () => {
-      off(eventTarget, "scroll", handleScroll)
+      eventTarget.removeEventListener("scroll", handleScroll, true)
       if (supportsScrollEnd) {
-        off(eventTarget, "scrollend", handleScrollEnd)
+        eventTarget.removeEventListener("scrollend", handleScrollEnd, true)
       }
-      clearTimeout(timeout)
+      if (timeout) clearTimeout(timeout)
     }
-  }, [target, debounce, fallbackToDocument, isScrolling])
+  }, [target, debounce, fallbackToDocument])
 
   return isScrolling
 }
