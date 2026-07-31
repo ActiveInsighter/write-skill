@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { JSONContent } from "@tiptap/core"
 import { EditorContent, EditorContext, useEditor } from "@tiptap/react"
 
@@ -60,6 +60,8 @@ import { ThemeToggle } from "@/components/tiptap-templates/simple/theme-toggle"
 
 import "@/components/tiptap-templates/simple/simple-editor.scss"
 import starterContent from "@/components/tiptap-templates/simple/data/content.json"
+
+const CONTENT_UPDATE_DELAY_MS = 300
 
 const MainToolbarContent = ({
   onHighlighterClick,
@@ -143,7 +145,7 @@ export interface SimpleEditorProps {
   onUpdate?: (content: JSONContent) => void
 }
 
-export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
+function SimpleEditorComponent({ content, onUpdate }: SimpleEditorProps) {
   const isMobile = useIsBreakpoint()
   const { height, offsetTop } = useWindowSize()
   const [mobileView, setMobileView] = useState<"main" | "highlighter" | "link">("main")
@@ -152,6 +154,8 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
   const toolbarRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const onUpdateRef = useRef(onUpdate)
+  const pendingContentRef = useRef<JSONContent | null>(null)
+  const updateTimerRef = useRef<number | null>(null)
   const lastEmittedContentRef = useRef<string | null>(null)
   const lastEmittedContentObjectRef = useRef<JSONContent | null>(null)
   const wrapperRect = useRefRect(wrapperRef, {
@@ -160,12 +164,50 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
     useResizeObserver: true,
   })
 
+  const flushPendingUpdate = useCallback(() => {
+    if (updateTimerRef.current !== null) {
+      window.clearTimeout(updateTimerRef.current)
+      updateTimerRef.current = null
+    }
+
+    const pendingContent = pendingContentRef.current
+    pendingContentRef.current = null
+    if (!pendingContent) return
+
+    queueMicrotask(() => onUpdateRef.current?.(pendingContent))
+  }, [])
+
+  const scheduleContentUpdate = useCallback(
+    (nextContent: JSONContent) => {
+      pendingContentRef.current = nextContent
+      if (updateTimerRef.current !== null) window.clearTimeout(updateTimerRef.current)
+      updateTimerRef.current = window.setTimeout(flushPendingUpdate, CONTENT_UPDATE_DELAY_MS)
+    },
+    [flushPendingUpdate],
+  )
+
   useEffect(() => {
     onUpdateRef.current = onUpdate
   }, [onUpdate])
 
+  useEffect(() => {
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") flushPendingUpdate()
+    }
+
+    window.addEventListener("pagehide", flushPendingUpdate)
+    document.addEventListener("visibilitychange", flushWhenHidden)
+
+    return () => {
+      window.removeEventListener("pagehide", flushPendingUpdate)
+      document.removeEventListener("visibilitychange", flushWhenHidden)
+      flushPendingUpdate()
+    }
+  }, [flushPendingUpdate])
+
   const editor = useEditor({
     immediatelyRender: false,
+    shouldRerenderOnTransaction: false,
     editorProps: {
       attributes: {
         autocomplete: "off",
@@ -199,7 +241,7 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
       const nextContent = currentEditor.getJSON()
       lastEmittedContentObjectRef.current = nextContent
       lastEmittedContentRef.current = JSON.stringify(nextContent)
-      onUpdateRef.current?.(nextContent)
+      scheduleContentUpdate(nextContent)
     },
   })
 
@@ -302,3 +344,10 @@ export function SimpleEditor({ content, onUpdate }: SimpleEditorProps) {
     </div>
   )
 }
+
+export const SimpleEditor = memo(
+  SimpleEditorComponent,
+  (previous, next) => previous.content === next.content,
+)
+
+SimpleEditor.displayName = "SimpleEditor"

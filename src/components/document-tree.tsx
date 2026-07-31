@@ -24,6 +24,7 @@ import {
   Trash2,
 } from "lucide-react"
 
+import { useSidebar } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import { MAX_NODE_NAME_LENGTH } from "@/lib/workspace-snapshot"
 import { useWorkspaceStore } from "@/store/workspace-store"
@@ -64,6 +65,30 @@ const getNodePath = (nodes: WorkspaceNodes, nodeId: string) => {
   return path.length > 0 ? path.join(" / ") : "Workspace"
 }
 
+const hasTreeDataChanged = (previous: WorkspaceNodes, next: WorkspaceNodes) => {
+  const previousIds = Object.keys(previous)
+  const nextIds = Object.keys(next)
+  if (previousIds.length !== nextIds.length) return true
+
+  for (const nodeId of previousIds) {
+    const previousNode = previous[nodeId]
+    const nextNode = next[nodeId]
+    if (!nextNode) return true
+
+    if (
+      previousNode.name !== nextNode.name ||
+      previousNode.type !== nextNode.type ||
+      previousNode.parentId !== nextNode.parentId ||
+      previousNode.children.length !== nextNode.children.length ||
+      previousNode.children.some((childId, index) => childId !== nextNode.children[index])
+    ) {
+      return true
+    }
+  }
+
+  return false
+}
+
 const menuPopupClassName =
   "min-w-52 rounded-lg border bg-popover p-1.5 text-popover-foreground shadow-lg outline-none"
 const menuItemClassName =
@@ -71,7 +96,8 @@ const menuItemClassName =
 const menuShortcutClassName = "ml-auto text-[0.68rem] tracking-wide text-muted-foreground"
 
 export function DocumentTree() {
-  const nodes = useWorkspaceStore((state) => state.nodes)
+  const { isMobile, setOpenMobile } = useSidebar()
+  const [nodes, setNodes] = React.useState(() => useWorkspaceStore.getState().nodes)
   const activeDocumentId = useWorkspaceStore((state) => state.activeDocumentId)
   const expandedItems = useWorkspaceStore((state) => state.expandedItems)
   const searchQuery = useWorkspaceStore((state) => state.searchQuery)
@@ -85,6 +111,35 @@ export function DocumentTree() {
   const moveNodes = useWorkspaceStore((state) => state.moveNodes)
   const deleteNode = useWorkspaceStore((state) => state.deleteNode)
   const deferredSearchQuery = React.useDeferredValue(searchQuery)
+
+  const openDocument = React.useCallback(
+    (documentId: string) => {
+      selectDocument(documentId)
+      if (isMobile) setOpenMobile(false)
+    },
+    [isMobile, selectDocument, setOpenMobile],
+  )
+
+  const createAndOpenDocument = React.useCallback(
+    (parentId?: string) => {
+      createDocument(parentId)
+      if (isMobile) setOpenMobile(false)
+    },
+    [createDocument, isMobile, setOpenMobile],
+  )
+
+  React.useEffect(
+    () =>
+      useWorkspaceStore.subscribe((state, previousState) => {
+        if (
+          state.nodes !== previousState.nodes &&
+          hasTreeDataChanged(previousState.nodes, state.nodes)
+        ) {
+          setNodes(state.nodes)
+        }
+      }),
+    [],
+  )
 
   const tree = useTree<WorkspaceNode>({
     rootItemId: "root",
@@ -100,7 +155,7 @@ export function DocumentTree() {
     state: { expandedItems },
     setExpandedItems: (value) => setExpandedItems(resolveStateUpdate(value, expandedItems)),
     onPrimaryAction: (item) => {
-      if (item.getItemData().type === "document") selectDocument(item.getId())
+      if (item.getItemData().type === "document") openDocument(item.getId())
     },
     onRename: (item, value) => renameNode(item.getId(), value),
     canRename: (item) => item.getId() !== "root",
@@ -161,7 +216,7 @@ export function DocumentTree() {
     }
 
     setExpandedItems(Array.from(new Set([...expandedItems, ...foldersToExpand])))
-    if (node.type === "document") selectDocument(node.id)
+    if (node.type === "document") openDocument(node.id)
     setSearchQuery("")
   }
 
@@ -307,7 +362,7 @@ export function DocumentTree() {
                     <>
                       <ContextMenu.Item
                         className={menuItemClassName}
-                        onClick={() => createDocument(node.id)}
+                        onClick={() => createAndOpenDocument(node.id)}
                       >
                         <FilePlus2 className="size-4 text-muted-foreground" />
                         New document
