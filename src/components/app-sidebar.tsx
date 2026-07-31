@@ -21,7 +21,9 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   SidebarInput,
+  SidebarRail,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { retryCloudSync } from "@/lib/cloud-sync"
 import { cn } from "@/lib/utils"
@@ -62,6 +64,7 @@ const cloudStatusDetails: Record<
 }
 
 export function AppSidebar() {
+  const { isMobile, setOpenMobile } = useSidebar()
   const searchQuery = useWorkspaceStore((store) => store.searchQuery)
   const setSearchQuery = useWorkspaceStore((store) => store.setSearchQuery)
   const createDocument = useWorkspaceStore((store) => store.createDocument)
@@ -74,6 +77,11 @@ export function AppSidebar() {
   const canRetryCloud =
     cloudStatus === "local" || cloudStatus === "offline" || cloudStatus === "error"
 
+  const createAndOpenDocument = () => {
+    createDocument()
+    if (isMobile) setOpenMobile(false)
+  }
+
   return (
     <Sidebar collapsible="offcanvas" variant="sidebar">
       <SidebarHeader className="gap-3 border-b border-sidebar-border px-3 py-3">
@@ -85,7 +93,11 @@ export function AppSidebar() {
             <span className="truncate text-sm font-semibold tracking-[-0.01em]">Write Skill</span>
             <span className="truncate text-xs text-sidebar-foreground/55">Document workspace</span>
           </div>
-          <SidebarTrigger className="size-8 shrink-0 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground" />
+          <SidebarTrigger
+            className="size-8 shrink-0 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            aria-label="Toggle sidebar"
+            title="Toggle sidebar (Ctrl+B)"
+          />
         </div>
 
         <div className="relative">
@@ -127,7 +139,7 @@ export function AppSidebar() {
                 variant="ghost"
                 size="icon"
                 className="size-7 rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                onClick={() => createDocument()}
+                onClick={createAndOpenDocument}
                 aria-label="Create document"
                 title="Create document"
               >
@@ -187,6 +199,8 @@ export function AppSidebar() {
           )}
         </div>
       </SidebarFooter>
+
+      <SidebarRail />
     </Sidebar>
   )
 }
