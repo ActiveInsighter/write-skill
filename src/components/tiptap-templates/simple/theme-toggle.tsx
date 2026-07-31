@@ -8,8 +8,20 @@ const THEME_STORAGE_KEY = "write-skill-theme"
 type ThemePreference = "light" | "dark" | null
 
 const readThemePreference = (): ThemePreference => {
-  const value = localStorage.getItem(THEME_STORAGE_KEY)
-  return value === "light" || value === "dark" ? value : null
+  try {
+    const value = localStorage.getItem(THEME_STORAGE_KEY)
+    return value === "light" || value === "dark" ? value : null
+  } catch {
+    return null
+  }
+}
+
+const applyTheme = (isDarkMode: boolean) => {
+  document.documentElement.classList.toggle("dark", isDarkMode)
+  document.documentElement.style.colorScheme = isDarkMode ? "dark" : "light"
+  document
+    .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute("content", isDarkMode ? "#1b1a18" : "#f8f7f4")
 }
 
 export function ThemeToggle() {
@@ -28,13 +40,16 @@ export function ThemeToggle() {
   }, [])
 
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", isDarkMode)
-    document.documentElement.style.colorScheme = isDarkMode ? "dark" : "light"
+    applyTheme(isDarkMode)
   }, [isDarkMode])
 
   const toggleDarkMode = () => {
     const nextPreference: Exclude<ThemePreference, null> = isDarkMode ? "light" : "dark"
-    localStorage.setItem(THEME_STORAGE_KEY, nextPreference)
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, nextPreference)
+    } catch {
+      // The visual preference still applies for this session when storage is unavailable.
+    }
     setThemePreference(nextPreference)
   }
 
