@@ -1,35 +1,26 @@
-import { useEffect, useState } from "react"
+import { useMemo } from "react"
+
+import { useMediaQuery } from "@/hooks/use-media-query"
 
 type BreakpointMode = "min" | "max"
 
 /**
- * Hook to detect whether the current viewport matches a given breakpoint rule.
+ * Detect whether the viewport matches a breakpoint rule.
  * Example:
  *   useIsBreakpoint("max", 768)   // true when width < 768
  *   useIsBreakpoint("min", 1024)  // true when width >= 1024
  */
 export function useIsBreakpoint(
   mode: BreakpointMode = "max",
-  breakpoint = 768
+  breakpoint = 768,
 ) {
-  const [matches, setMatches] = useState<boolean | undefined>(undefined)
-
-  useEffect(() => {
-    const query =
+  const query = useMemo(
+    () =>
       mode === "min"
         ? `(min-width: ${breakpoint}px)`
-        : `(max-width: ${breakpoint - 1}px)`
+        : `(max-width: ${breakpoint - 1}px)`,
+    [breakpoint, mode],
+  )
 
-    const mql = window.matchMedia(query)
-    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches)
-
-    // Set initial value
-    setMatches(mql.matches)
-
-    // Add listener
-    mql.addEventListener("change", onChange)
-    return () => mql.removeEventListener("change", onChange)
-  }, [mode, breakpoint])
-
-  return !!matches
+  return useMediaQuery(query)
 }
