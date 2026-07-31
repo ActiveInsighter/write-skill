@@ -169,6 +169,12 @@
   }
 }
 
+@media (pointer: coarse) {
+  .document-tree-drag-handle {
+    opacity: 0.55;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
