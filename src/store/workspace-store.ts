@@ -3,6 +3,11 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
 import { initialWorkspaceNodes } from "@/data/initial-documents"
+import {
+  findFirstDocumentId,
+  MAX_NODE_NAME_LENGTH,
+  normalizeWorkspaceSnapshot,
+} from "@/lib/workspace-snapshot"
 import type {
   CloudSyncStatus,
   WorkspaceNode,
@@ -17,23 +22,30 @@ const createId = (prefix: string) => {
 
 const cloneInitialNodes = (): WorkspaceNodes => structuredClone(initialWorkspaceNodes)
 
+const createInitialWorkspaceSnapshot = (): WorkspaceSnapshot => ({
+  nodes: cloneInitialNodes(),
+  activeDocumentId: "doc-product-brief",
+  expandedItems: ["folder-product", "folder-research"],
+  lastSavedAt: null,
+})
+
 const collectDescendantIds = (nodes: WorkspaceNodes, nodeId: string): string[] => {
-  const node = nodes[nodeId]
-  if (!node) return []
-  return [nodeId, ...node.children.flatMap((childId) => collectDescendantIds(nodes, childId))]
-}
+  const descendants: string[] = []
+  const pending = [nodeId]
+  const visited = new Set<string>()
 
-const findFirstDocument = (nodes: WorkspaceNodes, nodeId = "root"): string | null => {
-  const node = nodes[nodeId]
-  if (!node) return null
-  if (node.type === "document") return node.id
+  while (pending.length > 0) {
+    const currentId = pending.pop()!
+    if (visited.has(currentId)) continue
+    visited.add(currentId)
 
-  for (const childId of node.children) {
-    const documentId = findFirstDocument(nodes, childId)
-    if (documentId) return documentId
+    const node = nodes[currentId]
+    if (!node) continue
+    descendants.push(currentId)
+    pending.push(...node.children)
   }
 
-  return null
+  return descendants
 }
 
 const getTopLevelNodeIds = (nodes: WorkspaceNodes, nodeIds: string[]) => {
@@ -43,9 +55,12 @@ const getTopLevelNodeIds = (nodes: WorkspaceNodes, nodeIds: string[]) => {
   const requestedSet = new Set(requestedIds)
 
   return requestedIds.filter((nodeId) => {
+    const visited = new Set<string>()
     let parentId = nodes[nodeId]?.parentId
-    while (parentId) {
+
+    while (parentId && !visited.has(parentId)) {
       if (requestedSet.has(parentId)) return false
+      visited.add(parentId)
       parentId = nodes[parentId]?.parentId ?? null
     }
     return true
@@ -53,12 +68,23 @@ const getTopLevelNodeIds = (nodes: WorkspaceNodes, nodeIds: string[]) => {
 }
 
 const isNodeInsideSubtree = (nodes: WorkspaceNodes, nodeId: string, subtreeRootId: string) => {
+  const visited = new Set<string>()
   let currentId: string | null = nodeId
-  while (currentId) {
+
+  while (currentId && !visited.has(currentId)) {
     if (currentId === subtreeRootId) return true
+    visited.add(currentId)
     currentId = nodes[currentId]?.parentId ?? null
   }
   return false
+}
+
+const normalizeNodeName = (name: string) => name.trim().slice(0, MAX_NODE_NAME_LENGTH).trimEnd()
+
+const createCopyName = (name: string) => {
+  const suffix = " copy"
+  const baseName = name.slice(0, MAX_NODE_NAME_LENGTH - suffix.length).trimEnd()
+  return `${baseName || "Untitled"}${suffix}`
 }
 
 const cloneSubtree = (
@@ -67,15 +93,19 @@ const cloneSubtree = (
   parentId: string,
   updatedAt: string,
   renameRoot: boolean,
-): { rootId: string; nodes: WorkspaceNodes } => {
+  visited = new Set<string>(),
+): { rootId: string; nodes: WorkspaceNodes } | null => {
   const source = sourceNodes[sourceId]
+  if (!source || visited.has(sourceId)) return null
+  visited.add(sourceId)
+
   const id = createId(source.type === "folder" ? "folder" : "doc")
   const clonedNodes: WorkspaceNodes = {}
   const clonedNode: WorkspaceNode = {
     ...structuredClone(source),
     id,
     parentId,
-    name: renameRoot ? `${source.name} copy` : source.name,
+    name: renameRoot ? createCopyName(source.name) : source.name,
     children: [],
     updatedAt,
   }
@@ -83,7 +113,8 @@ const cloneSubtree = (
   clonedNodes[id] = clonedNode
 
   for (const childId of source.children) {
-    const childClone = cloneSubtree(sourceNodes, childId, id, updatedAt, false)
+    const childClone = cloneSubtree(sourceNodes, childId, id, updatedAt, false, visited)
+    if (!childClone) return null
     clonedNode.children.push(childClone.rootId)
     Object.assign(clonedNodes, childClone.nodes)
   }
@@ -142,6 +173,12 @@ const emptyDocument = (title: string): JSONContent => ({
   ],
 })
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const normalizeRemoteRevision = (value: unknown) =>
+  typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null
+
 export const getWorkspaceSnapshot = (state: WorkspaceSnapshot): WorkspaceSnapshot => ({
   nodes: state.nodes,
   activeDocumentId: state.activeDocumentId,
@@ -152,35 +189,47 @@ export const getWorkspaceSnapshot = (state: WorkspaceSnapshot): WorkspaceSnapsho
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set, get) => ({
-      nodes: cloneInitialNodes(),
-      activeDocumentId: "doc-product-brief",
-      expandedItems: ["folder-product", "folder-research"],
+      ...createInitialWorkspaceSnapshot(),
       searchQuery: "",
-      lastSavedAt: null,
       remoteRevision: null,
       cloudStatus: "local",
       cloudError: null,
       setSearchQuery: (searchQuery) => set({ searchQuery }),
-      setExpandedItems: (expandedItems) => set({ expandedItems }),
+      setExpandedItems: (items) =>
+        set((state) => ({
+          expandedItems: Array.from(
+            new Set(items.filter((itemId) => state.nodes[itemId]?.type === "folder")),
+          ),
+        })),
       selectDocument: (documentId) => {
-        const node = get().nodes[documentId]
-        if (node?.type === "document") set({ activeDocumentId: documentId })
+        const state = get()
+        const node = state.nodes[documentId]
+        if (node?.type === "document" && state.activeDocumentId !== documentId) {
+          set({ activeDocumentId: documentId })
+        }
       },
       renameNode: (nodeId, name) => {
-        const trimmedName = name.trim()
-        if (!trimmedName || !get().nodes[nodeId]) return
+        const trimmedName = normalizeNodeName(name)
+        const currentNode = get().nodes[nodeId]
+        if (!trimmedName || !currentNode || currentNode.name === trimmedName) return
+
         const updatedAt = new Date().toISOString()
-        set((state) => ({
-          nodes: {
-            ...state.nodes,
-            [nodeId]: {
-              ...state.nodes[nodeId],
-              name: trimmedName,
-              updatedAt,
+        set((state) => {
+          const node = state.nodes[nodeId]
+          if (!node) return state
+
+          return {
+            nodes: {
+              ...state.nodes,
+              [nodeId]: {
+                ...node,
+                name: trimmedName,
+                updatedAt,
+              },
             },
-          },
-          lastSavedAt: updatedAt,
-        }))
+            lastSavedAt: updatedAt,
+          }
+        })
       },
       createDocument: (requestedParentId) => {
         const state = get()
@@ -201,21 +250,26 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           updatedAt,
         }
 
-        set((current) => ({
-          nodes: {
-            ...current.nodes,
-            [parentId]: {
-              ...current.nodes[parentId],
-              children: [...current.nodes[parentId].children, id],
-              updatedAt,
+        set((current) => {
+          const parent = current.nodes[parentId]
+          if (!parent || parent.type !== "folder") return current
+
+          return {
+            nodes: {
+              ...current.nodes,
+              [parentId]: {
+                ...parent,
+                children: [...parent.children, id],
+                updatedAt,
+              },
+              [id]: node,
             },
-            [id]: node,
-          },
-          activeDocumentId: id,
-          expandedItems: Array.from(new Set([...current.expandedItems, parentId])),
-          searchQuery: "",
-          lastSavedAt: updatedAt,
-        }))
+            activeDocumentId: id,
+            expandedItems: Array.from(new Set([...current.expandedItems, parentId])),
+            searchQuery: "",
+            lastSavedAt: updatedAt,
+          }
+        })
         return id
       },
       createFolder: (requestedParentId) => {
@@ -236,20 +290,25 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           updatedAt,
         }
 
-        set((current) => ({
-          nodes: {
-            ...current.nodes,
-            [parentId]: {
-              ...current.nodes[parentId],
-              children: [...current.nodes[parentId].children, id],
-              updatedAt,
+        set((current) => {
+          const parent = current.nodes[parentId]
+          if (!parent || parent.type !== "folder") return current
+
+          return {
+            nodes: {
+              ...current.nodes,
+              [parentId]: {
+                ...parent,
+                children: [...parent.children, id],
+                updatedAt,
+              },
+              [id]: node,
             },
-            [id]: node,
-          },
-          expandedItems: Array.from(new Set([...current.expandedItems, parentId, id])),
-          searchQuery: "",
-          lastSavedAt: updatedAt,
-        }))
+            expandedItems: Array.from(new Set([...current.expandedItems, parentId, id])),
+            searchQuery: "",
+            lastSavedAt: updatedAt,
+          }
+        })
         return id
       },
       duplicateNode: (nodeId) => {
@@ -257,10 +316,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const state = get()
         const source = state.nodes[nodeId]
         const parentId = source?.parentId
-        if (!source || !parentId || !state.nodes[parentId]) return null
+        if (!source || !parentId || state.nodes[parentId]?.type !== "folder") return null
 
         const updatedAt = new Date().toISOString()
         const cloned = cloneSubtree(state.nodes, nodeId, parentId, updatedAt, true)
+        if (!cloned) return null
+
         const parentChildren = state.nodes[parentId].children
         const sourceIndex = parentChildren.indexOf(nodeId)
         const insertionIndex = sourceIndex < 0 ? parentChildren.length : sourceIndex + 1
@@ -277,8 +338,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               updatedAt,
             },
           },
-          activeDocumentId:
-            source.type === "document" ? cloned.rootId : state.activeDocumentId,
+          activeDocumentId: source.type === "document" ? cloned.rootId : state.activeDocumentId,
           expandedItems: Array.from(
             new Set([
               ...state.expandedItems,
@@ -286,6 +346,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               ...(source.type === "folder" ? [cloned.rootId] : []),
             ]),
           ),
+          searchQuery: "",
           lastSavedAt: updatedAt,
         })
 
@@ -324,11 +385,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           }
         }
 
+        const originalTargetChildren = targetParent.children
         const targetChildren = [...nextNodes[requestedParentId].children]
-        const safeInsertionIndex =
-          insertionIndex === undefined
-            ? targetChildren.length
-            : Math.max(0, Math.min(insertionIndex, targetChildren.length))
+        let safeInsertionIndex = targetChildren.length
+
+        if (insertionIndex !== undefined) {
+          const boundedOriginalIndex = Math.max(
+            0,
+            Math.min(insertionIndex, originalTargetChildren.length),
+          )
+          const movedBeforeTarget = originalTargetChildren
+            .slice(0, boundedOriginalIndex)
+            .filter((childId) => movedIds.includes(childId)).length
+          safeInsertionIndex = Math.max(
+            0,
+            Math.min(boundedOriginalIndex - movedBeforeTarget, targetChildren.length),
+          )
+        }
+
         targetChildren.splice(safeInsertionIndex, 0, ...movedIds)
         nextNodes[requestedParentId] = {
           ...nextNodes[requestedParentId],
@@ -337,8 +411,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
 
         for (const nodeId of movedIds) {
+          const node = nextNodes[nodeId]
+          if (!node) continue
           nextNodes[nodeId] = {
-            ...nextNodes[nodeId],
+            ...node,
             parentId: requestedParentId,
             updatedAt,
           }
@@ -347,6 +423,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set({
           nodes: nextNodes,
           expandedItems: Array.from(new Set([...state.expandedItems, requestedParentId])),
+          searchQuery: "",
           lastSavedAt: updatedAt,
         })
       },
@@ -371,40 +448,54 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
         const nextActiveDocumentId =
           state.activeDocumentId && deletedIds.has(state.activeDocumentId)
-            ? findFirstDocument(nextNodes)
+            ? findFirstDocumentId(nextNodes)
             : state.activeDocumentId
 
         set({
           nodes: nextNodes,
           activeDocumentId: nextActiveDocumentId,
           expandedItems: state.expandedItems.filter((id) => !deletedIds.has(id)),
+          searchQuery: "",
           lastSavedAt: updatedAt,
         })
       },
       updateDocumentContent: (documentId, content) => {
-        const node = get().nodes[documentId]
-        if (node?.type !== "document") return
-        const updatedAt = new Date().toISOString()
-        set((state) => ({
-          nodes: {
-            ...state.nodes,
-            [documentId]: {
-              ...node,
-              content,
-              updatedAt,
+        set((state) => {
+          const node = state.nodes[documentId]
+          if (node?.type !== "document" || node.content === content) return state
+
+          const updatedAt = new Date().toISOString()
+          return {
+            nodes: {
+              ...state.nodes,
+              [documentId]: {
+                ...node,
+                content,
+                updatedAt,
+              },
             },
-          },
-          lastSavedAt: updatedAt,
-        }))
+            lastSavedAt: updatedAt,
+          }
+        })
       },
-      replaceWorkspace: (snapshot, remoteRevision) =>
+      replaceWorkspace: (snapshot, remoteRevision) => {
+        const normalized = normalizeWorkspaceSnapshot(snapshot)
+        if (!normalized) {
+          set({
+            cloudStatus: "error",
+            cloudError: "The cloud workspace returned invalid data. The local copy was kept.",
+          })
+          return
+        }
+
         set({
-          ...snapshot,
+          ...normalized,
           searchQuery: "",
           remoteRevision,
           cloudStatus: "synced",
           cloudError: null,
-        }),
+        })
+      },
       setCloudState: (cloudStatus, options) =>
         set((state) => ({
           cloudStatus,
@@ -414,11 +505,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         })),
       resetWorkspace: () =>
         set({
-          nodes: cloneInitialNodes(),
-          activeDocumentId: "doc-product-brief",
-          expandedItems: ["folder-product", "folder-research"],
+          ...createInitialWorkspaceSnapshot(),
           searchQuery: "",
-          lastSavedAt: null,
           remoteRevision: null,
           cloudStatus: "local",
           cloudError: null,
@@ -426,13 +514,21 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     }),
     {
       name: "write-skill-workspace-v1",
-      version: 2,
-      migrate: (persistedState) => ({
-        ...(persistedState as WorkspaceState),
-        remoteRevision: null,
-        cloudStatus: "local",
-        cloudError: null,
-      }),
+      version: 3,
+      migrate: (persistedState) => persistedState as WorkspaceState,
+      merge: (persistedState, currentState) => {
+        const normalizedSnapshot = normalizeWorkspaceSnapshot(persistedState)
+        const persistedRecord = isRecord(persistedState) ? persistedState : {}
+
+        return {
+          ...currentState,
+          ...(normalizedSnapshot ?? createInitialWorkspaceSnapshot()),
+          searchQuery: "",
+          remoteRevision: normalizeRemoteRevision(persistedRecord.remoteRevision),
+          cloudStatus: "local",
+          cloudError: null,
+        }
+      },
       partialize: (state) => ({
         nodes: state.nodes,
         activeDocumentId: state.activeDocumentId,
