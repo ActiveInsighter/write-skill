@@ -9,6 +9,7 @@ import {
   type WorkspaceCredentials,
 } from "@/lib/workspace-api"
 import { getWorkspaceSnapshot, useWorkspaceStore } from "@/store/workspace-store"
+import type { WorkspaceSnapshot } from "@/types/document"
 
 const SYNC_DELAY_MS = 900
 
@@ -19,10 +20,42 @@ let syncInFlight = false
 let syncAgain = false
 let credentials: WorkspaceCredentials | null = null
 
+const workspaceContentMatches = (left: WorkspaceSnapshot, right: WorkspaceSnapshot) =>
+  left.lastSavedAt === right.lastSavedAt && JSON.stringify(left.nodes) === JSON.stringify(right.nodes)
+
+const clearScheduledSync = () => {
+  if (!syncTimer) return
+  clearTimeout(syncTimer)
+  syncTimer = undefined
+}
+
+const setCloudFailure = (error: unknown, fallback: string) => {
+  const state = useWorkspaceStore.getState()
+
+  if (!navigator.onLine || error instanceof TypeError) {
+    state.setCloudState("offline", {
+      error: "Cloud sync is unavailable. Your changes remain stored in this browser.",
+    })
+    return
+  }
+
+  if (error instanceof WorkspaceApiError && error.status === 409) {
+    state.setCloudState("conflict", {
+      error: "The local and cloud copies both changed. Choose which copy to keep.",
+    })
+    return
+  }
+
+  state.setCloudState("error", {
+    error: error instanceof Error ? error.message : fallback,
+  })
+}
+
 const scheduleSync = () => {
   if (!ready) return
-  if (syncTimer) clearTimeout(syncTimer)
+  clearScheduledSync()
   syncTimer = setTimeout(() => {
+    syncTimer = undefined
     void syncWorkspace()
   }, SYNC_DELAY_MS)
 }
@@ -37,7 +70,7 @@ const createWorkspaceFromLocalState = async () => {
     accessToken: remote.accessToken,
   }
   saveWorkspaceCredentials(credentials)
-  state.setCloudState("synced", {
+  useWorkspaceStore.getState().setCloudState("synced", {
     error: null,
     revision: remote.revision,
   })
@@ -61,9 +94,30 @@ const bootstrap = async () => {
     return
   }
 
+  let syncLocalChanges = false
+
   try {
     const remote = await fetchRemoteWorkspace(credentials)
-    store.replaceWorkspace(remote.snapshot, remote.revision)
+    const current = useWorkspaceStore.getState()
+    const localSnapshot = getWorkspaceSnapshot(current)
+
+    if (workspaceContentMatches(localSnapshot, remote.snapshot)) {
+      current.setCloudState("synced", {
+        error: null,
+        revision: remote.revision,
+      })
+    } else if (current.remoteRevision === remote.revision) {
+      current.setCloudState("synced", {
+        error: null,
+        revision: remote.revision,
+      })
+      syncLocalChanges = true
+    } else {
+      current.setCloudState("conflict", {
+        error: "The local and cloud copies both changed. Choose which copy to keep.",
+        revision: remote.revision,
+      })
+    }
   } catch (error) {
     if (error instanceof WorkspaceApiError && error.status === 404) {
       clearWorkspaceCredentials()
@@ -75,13 +129,17 @@ const bootstrap = async () => {
   }
 
   ready = true
+  if (syncLocalChanges) scheduleSync()
 }
 
 const syncWorkspace = async () => {
   if (!ready) return
 
+  const current = useWorkspaceStore.getState()
+  if (current.cloudStatus === "conflict") return
+
   if (!navigator.onLine) {
-    useWorkspaceStore.getState().setCloudState("offline", {
+    current.setCloudState("offline", {
       error: "Changes are saved locally and will sync when you are back online.",
     })
     return
@@ -93,7 +151,6 @@ const syncWorkspace = async () => {
   }
 
   syncInFlight = true
-  const state = useWorkspaceStore.getState()
 
   try {
     if (!credentials) credentials = loadWorkspaceCredentials()
@@ -103,10 +160,12 @@ const syncWorkspace = async () => {
       return
     }
 
+    const state = useWorkspaceStore.getState()
     const baseRevision = state.remoteRevision
     if (!baseRevision) {
-      const remote = await fetchRemoteWorkspace(credentials)
-      state.replaceWorkspace(remote.snapshot, remote.revision)
+      state.setCloudState("conflict", {
+        error: "The cloud revision is unknown. Choose which copy to keep before syncing.",
+      })
       return
     }
 
@@ -121,21 +180,7 @@ const syncWorkspace = async () => {
       revision: result.revision,
     })
   } catch (error) {
-    const current = useWorkspaceStore.getState()
-
-    if (error instanceof WorkspaceApiError && error.status === 409) {
-      current.setCloudState("conflict", {
-        error: "This workspace changed elsewhere. Reload before overwriting the newer cloud copy.",
-      })
-    } else if (!navigator.onLine || error instanceof TypeError) {
-      current.setCloudState("offline", {
-        error: "Cloud sync is unavailable. Your changes remain stored in this browser.",
-      })
-    } else {
-      current.setCloudState("error", {
-        error: error instanceof Error ? error.message : "Cloud sync failed.",
-      })
-    }
+    setCloudFailure(error, "Cloud sync failed.")
   } finally {
     syncInFlight = false
     if (syncAgain) {
@@ -145,8 +190,72 @@ const syncWorkspace = async () => {
   }
 }
 
+export const reloadCloudWorkspace = async () => {
+  if (syncInFlight) return
+  clearScheduledSync()
+
+  if (!navigator.onLine) {
+    useWorkspaceStore.getState().setCloudState("offline", {
+      error: "Connect to the internet before loading the cloud copy.",
+    })
+    return
+  }
+
+  syncInFlight = true
+  const state = useWorkspaceStore.getState()
+  state.setCloudState("connecting", { error: null })
+
+  try {
+    if (!credentials) credentials = loadWorkspaceCredentials()
+    if (!credentials) throw new Error("No cloud workspace is connected to this browser.")
+
+    const remote = await fetchRemoteWorkspace(credentials)
+    useWorkspaceStore.getState().replaceWorkspace(remote.snapshot, remote.revision)
+  } catch (error) {
+    setCloudFailure(error, "Unable to load the cloud copy.")
+  } finally {
+    syncInFlight = false
+  }
+}
+
+export const overwriteCloudWorkspace = async () => {
+  if (syncInFlight) return
+  clearScheduledSync()
+
+  if (!navigator.onLine) {
+    useWorkspaceStore.getState().setCloudState("offline", {
+      error: "Connect to the internet before replacing the cloud copy.",
+    })
+    return
+  }
+
+  syncInFlight = true
+  const state = useWorkspaceStore.getState()
+  state.setCloudState("syncing", { error: null })
+
+  try {
+    if (!credentials) credentials = loadWorkspaceCredentials()
+    if (!credentials) throw new Error("No cloud workspace is connected to this browser.")
+
+    const remote = await fetchRemoteWorkspace(credentials)
+    const result = await updateRemoteWorkspace(
+      credentials,
+      remote.revision,
+      getWorkspaceSnapshot(useWorkspaceStore.getState()),
+    )
+    useWorkspaceStore.getState().setCloudState("synced", {
+      error: null,
+      revision: result.revision,
+    })
+  } catch (error) {
+    setCloudFailure(error, "Unable to replace the cloud copy.")
+  } finally {
+    syncInFlight = false
+  }
+}
+
 export const retryCloudSync = () => {
-  if (!ready) return
+  if (!ready || useWorkspaceStore.getState().cloudStatus === "conflict") return
   void syncWorkspace()
 }
 
@@ -155,13 +264,10 @@ export const startCloudSync = () => {
   started = true
 
   useWorkspaceStore.subscribe((state, previous) => {
-    const workspaceChanged =
-      state.nodes !== previous.nodes ||
-      state.activeDocumentId !== previous.activeDocumentId ||
-      state.expandedItems !== previous.expandedItems ||
-      state.lastSavedAt !== previous.lastSavedAt
+    const documentDataChanged =
+      state.nodes !== previous.nodes || state.lastSavedAt !== previous.lastSavedAt
 
-    if (workspaceChanged) scheduleSync()
+    if (documentDataChanged) scheduleSync()
   })
 
   window.addEventListener("online", retryCloudSync)
@@ -173,8 +279,6 @@ export const startCloudSync = () => {
 
   void bootstrap().catch((error) => {
     ready = true
-    useWorkspaceStore.getState().setCloudState("error", {
-      error: error instanceof Error ? error.message : "Unable to initialize cloud sync.",
-    })
+    setCloudFailure(error, "Unable to initialize cloud sync.")
   })
 }
