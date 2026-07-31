@@ -26,6 +26,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -57,6 +59,8 @@
   --accent: oklch(0.95 0.007 82);
   --accent-foreground: oklch(0.24 0.008 70);
   --destructive: oklch(0.58 0.22 27);
+  --success: oklch(0.52 0.12 150);
+  --warning: oklch(0.62 0.12 75);
   --border: oklch(0.9 0.007 82);
   --input: oklch(0.9 0.007 82);
   --ring: oklch(0.61 0.02 70);
@@ -87,6 +91,8 @@
   --accent: oklch(0.27 0.01 70);
   --accent-foreground: oklch(0.965 0.005 85);
   --destructive: oklch(0.7 0.19 25);
+  --success: oklch(0.72 0.13 150);
+  --warning: oklch(0.78 0.12 80);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 13%);
   --ring: oklch(0.58 0.018 75);
@@ -138,11 +144,7 @@
 }
 
 .editor-stage {
-  background: oklch(0.955 0.006 85);
-}
-
-.dark .editor-stage {
-  background: oklch(0.135 0.005 70);
+  background: color-mix(in oklab, var(--muted) 78%, var(--background));
 }
 
 .editor-frame {

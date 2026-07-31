@@ -164,6 +164,14 @@ function SimpleEditorComponent({ content, onUpdate }: SimpleEditorProps) {
     useResizeObserver: true,
   })
 
+  const cancelPendingUpdate = useCallback(() => {
+    if (updateTimerRef.current !== null) {
+      window.clearTimeout(updateTimerRef.current)
+      updateTimerRef.current = null
+    }
+    pendingContentRef.current = null
+  }, [])
+
   const flushPendingUpdate = useCallback(() => {
     if (updateTimerRef.current !== null) {
       window.clearTimeout(updateTimerRef.current)
@@ -298,10 +306,11 @@ function SimpleEditorComponent({ content, onUpdate }: SimpleEditorProps) {
       return
     }
 
+    cancelPendingUpdate()
     editor.commands.setContent(content, { emitUpdate: false })
     lastEmittedContentObjectRef.current = content
     lastEmittedContentRef.current = incomingContent
-  }, [content, editor])
+  }, [cancelPendingUpdate, content, editor])
 
   useEffect(() => {
     if (!isMobile && mobileView !== "main") setMobileView("main")
@@ -347,7 +356,8 @@ function SimpleEditorComponent({ content, onUpdate }: SimpleEditorProps) {
 
 export const SimpleEditor = memo(
   SimpleEditorComponent,
-  (previous, next) => previous.content === next.content,
+  (previous, next) =>
+    previous.content === next.content && previous.onUpdate === next.onUpdate,
 )
 
 SimpleEditor.displayName = "SimpleEditor"

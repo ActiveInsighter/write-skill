@@ -41,19 +41,19 @@ const cloudStatusDetails: Record<
     label: "Cloud synced",
     detail: "Local cache and D1 are current",
     icon: Cloud,
-    className: "text-emerald-600",
+    className: "text-success",
   },
   offline: {
     label: "Working offline",
     detail: "Changes remain in this browser",
     icon: CloudOff,
-    className: "text-amber-600",
+    className: "text-warning",
   },
   conflict: {
     label: "Sync conflict",
     detail: "Choose a copy in the editor",
     icon: CircleAlert,
-    className: "text-amber-600",
+    className: "text-warning",
   },
   error: {
     label: "Cloud sync error",

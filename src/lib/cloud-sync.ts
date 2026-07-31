@@ -235,6 +235,7 @@ export const reloadCloudWorkspace = async () => {
 
   syncInFlight = true
   const state = useWorkspaceStore.getState()
+  const localSignatureAtStart = getWorkspaceContentSignature(getWorkspaceSnapshot(state))
   state.setCloudState("connecting", { error: null })
 
   try {
@@ -242,8 +243,19 @@ export const reloadCloudWorkspace = async () => {
     if (!credentials) throw new Error("No cloud workspace is connected to this browser.")
 
     const remote = await fetchRemoteWorkspace(credentials)
+    const current = useWorkspaceStore.getState()
+    const currentLocalSignature = getWorkspaceContentSignature(getWorkspaceSnapshot(current))
+
+    if (currentLocalSignature !== localSignatureAtStart) {
+      current.setCloudState("conflict", {
+        error: "The local workspace changed while the cloud copy was loading. Review the copies again before replacing either one.",
+        revision: remote.revision,
+      })
+      return
+    }
+
     lastSyncedContentSignature = getWorkspaceContentSignature(remote.snapshot)
-    useWorkspaceStore.getState().replaceWorkspace(remote.snapshot, remote.revision)
+    current.replaceWorkspace(remote.snapshot, remote.revision)
   } catch (error) {
     setCloudFailure(error, "Unable to load the cloud copy.")
   } finally {

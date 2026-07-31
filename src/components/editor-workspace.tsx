@@ -1,4 +1,5 @@
 import * as React from "react"
+import type { JSONContent } from "@tiptap/core"
 import {
   Check,
   ChevronRight,
@@ -13,6 +14,7 @@ import {
   RefreshCw,
   Sparkles,
 } from "lucide-react"
+import { useShallow } from "zustand/react/shallow"
 
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -23,6 +25,7 @@ import {
   retryCloudSync,
 } from "@/lib/cloud-sync"
 import { cn } from "@/lib/utils"
+import { MAX_NODE_NAME_LENGTH } from "@/lib/workspace-snapshot"
 import { useWorkspaceStore } from "@/store/workspace-store"
 import type { CloudSyncStatus, WorkspaceNodes } from "@/types/document"
 
@@ -66,9 +69,9 @@ const cloudStatusDetails: Record<
   local: { label: "Local only", icon: CloudOff },
   connecting: { label: "Connecting", icon: LoaderCircle },
   syncing: { label: "Syncing", icon: LoaderCircle },
-  synced: { label: "Cloud synced", icon: Cloud, className: "text-emerald-600" },
-  offline: { label: "Offline", icon: CloudOff, className: "text-amber-600" },
-  conflict: { label: "Sync conflict", icon: CircleAlert, className: "text-amber-600" },
+  synced: { label: "Cloud synced", icon: Cloud, className: "text-success" },
+  offline: { label: "Offline", icon: CloudOff, className: "text-warning" },
+  conflict: { label: "Sync conflict", icon: CircleAlert, className: "text-warning" },
   error: { label: "Sync error", icon: CircleAlert, className: "text-destructive" },
 }
 
@@ -139,23 +142,56 @@ class EditorErrorBoundary extends React.Component<
   }
 }
 
+const ActiveDocumentEditor = React.memo(function ActiveDocumentEditor({
+  documentId,
+}: {
+  documentId: string
+}) {
+  const content = useWorkspaceStore((state) => {
+    const node = state.nodes[documentId]
+    return node?.type === "document" ? node.content : undefined
+  })
+  const updateDocumentContent = useWorkspaceStore((state) => state.updateDocumentContent)
+  const handleUpdate = React.useCallback(
+    (nextContent: JSONContent) => updateDocumentContent(documentId, nextContent),
+    [documentId, updateDocumentContent],
+  )
+
+  if (!content) return null
+
+  return (
+    <EditorErrorBoundary resetKey={documentId}>
+      <React.Suspense fallback={<EditorLoadingState />}>
+        <SimpleEditor key={documentId} content={content} onUpdate={handleUpdate} />
+      </React.Suspense>
+    </EditorErrorBoundary>
+  )
+})
+
 export function EditorWorkspace() {
-  const activeDocumentId = useWorkspaceStore((state) => state.activeDocumentId)
-  const nodes = useWorkspaceStore((state) => state.nodes)
+  const activeDocument = useWorkspaceStore(
+    useShallow((state) => {
+      const documentId = state.activeDocumentId
+      const node = documentId ? state.nodes[documentId] : undefined
+
+      return node?.type === "document"
+        ? { id: node.id, name: node.name }
+        : null
+    }),
+  )
+  const documentPath = useWorkspaceStore(
+    useShallow((state) =>
+      activeDocument ? getDocumentPath(state.nodes, activeDocument.id) : [],
+    ),
+  )
   const lastSavedAt = useWorkspaceStore((state) => state.lastSavedAt)
   const cloudStatus = useWorkspaceStore((state) => state.cloudStatus)
   const cloudError = useWorkspaceStore((state) => state.cloudError)
   const remoteRevision = useWorkspaceStore((state) => state.remoteRevision)
   const createDocument = useWorkspaceStore((state) => state.createDocument)
   const renameNode = useWorkspaceStore((state) => state.renameNode)
-  const updateDocumentContent = useWorkspaceStore((state) => state.updateDocumentContent)
 
-  const activeDocument = activeDocumentId ? nodes[activeDocumentId] : undefined
   const [title, setTitle] = React.useState(activeDocument?.name ?? "")
-  const documentPath = React.useMemo(
-    () => (activeDocument ? getDocumentPath(nodes, activeDocument.id) : []),
-    [activeDocument, nodes],
-  )
   const cloudDetails = cloudStatusDetails[cloudStatus]
   const CloudIcon = cloudDetails.icon
   const isCloudBusy = cloudStatus === "connecting" || cloudStatus === "syncing"
@@ -185,7 +221,7 @@ export function EditorWorkspace() {
     if (confirmed) void overwriteCloudWorkspace()
   }
 
-  if (!activeDocument || activeDocument.type !== "document") {
+  if (!activeDocument) {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur md:px-4">
@@ -237,6 +273,7 @@ export function EditorWorkspace() {
           </div>
           <input
             value={title}
+            maxLength={MAX_NODE_NAME_LENGTH}
             onChange={(event) => setTitle(event.target.value)}
             onBlur={commitTitle}
             onKeyDown={(event) => {
@@ -253,7 +290,7 @@ export function EditorWorkspace() {
 
         <div className="hidden shrink-0 items-center gap-1.5 text-xs text-muted-foreground xl:flex">
           <span className="flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-background px-2.5 py-1">
-            <Check className="size-3.5 text-emerald-600" aria-hidden="true" />
+            <Check className="size-3.5 text-success" aria-hidden="true" />
             {formatSavedTime(lastSavedAt)}
           </span>
           <button
@@ -301,12 +338,12 @@ export function EditorWorkspace() {
       {cloudStatus === "conflict" && (
         <div
           role="alert"
-          className="flex shrink-0 flex-col gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3 text-amber-950 sm:flex-row sm:items-center dark:border-amber-900/70 dark:bg-amber-950/35 dark:text-amber-100"
+          className="flex shrink-0 flex-col gap-3 border-b border-warning/30 bg-warning/10 px-4 py-3 text-foreground sm:flex-row sm:items-center"
         >
-          <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+          <CircleAlert className="size-4 shrink-0 text-warning" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">Local and cloud copies both changed</p>
-            <p className="mt-0.5 text-xs opacity-75">
+            <p className="mt-0.5 text-xs text-muted-foreground">
               Choose a copy explicitly. Nothing will be overwritten automatically.
             </p>
           </div>
@@ -336,15 +373,7 @@ export function EditorWorkspace() {
 
       <main className="editor-stage min-h-0 min-w-0 flex-1 overflow-hidden p-2 sm:p-3 lg:p-4">
         <section className="editor-frame mx-auto h-full min-h-0 w-full min-w-0 max-w-[1240px] overflow-hidden rounded-2xl border border-border/80 bg-card shadow-[0_12px_40px_-24px_rgba(28,25,23,0.28)]">
-          <EditorErrorBoundary resetKey={activeDocument.id}>
-            <React.Suspense fallback={<EditorLoadingState />}>
-              <SimpleEditor
-                key={activeDocument.id}
-                content={activeDocument.content}
-                onUpdate={(content) => updateDocumentContent(activeDocument.id, content)}
-              />
-            </React.Suspense>
-          </EditorErrorBoundary>
+          <ActiveDocumentEditor documentId={activeDocument.id} />
         </section>
       </main>
     </div>
