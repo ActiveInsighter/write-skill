@@ -368,7 +368,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           return
         }
 
-        const updatedAt = new Date().toISOString()
         const nextNodes = { ...state.nodes }
         const affectedParentIds = new Set<string>([requestedParentId])
 
@@ -381,29 +380,31 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           nextNodes[parentId] = {
             ...nextNodes[parentId],
             children: nextNodes[parentId].children.filter((childId) => !movedIds.includes(childId)),
-            updatedAt,
           }
         }
 
-        const originalTargetChildren = targetParent.children
         const targetChildren = [...nextNodes[requestedParentId].children]
-        let safeInsertionIndex = targetChildren.length
-
-        if (insertionIndex !== undefined) {
-          const boundedOriginalIndex = Math.max(
-            0,
-            Math.min(insertionIndex, originalTargetChildren.length),
-          )
-          const movedBeforeTarget = originalTargetChildren
-            .slice(0, boundedOriginalIndex)
-            .filter((childId) => movedIds.includes(childId)).length
-          safeInsertionIndex = Math.max(
-            0,
-            Math.min(boundedOriginalIndex - movedBeforeTarget, targetChildren.length),
-          )
-        }
+        // Headless Tree's insertionIndex already accounts for items removed from the same parent.
+        const safeInsertionIndex =
+          insertionIndex === undefined
+            ? targetChildren.length
+            : Math.max(0, Math.min(insertionIndex, targetChildren.length))
 
         targetChildren.splice(safeInsertionIndex, 0, ...movedIds)
+
+        const isNoOp =
+          affectedParentIds.size === 1 &&
+          targetChildren.length === targetParent.children.length &&
+          targetChildren.every((childId, index) => childId === targetParent.children[index])
+        if (isNoOp) return
+
+        const updatedAt = new Date().toISOString()
+        for (const parentId of affectedParentIds) {
+          nextNodes[parentId] = {
+            ...nextNodes[parentId],
+            updatedAt,
+          }
+        }
         nextNodes[requestedParentId] = {
           ...nextNodes[requestedParentId],
           children: targetChildren,
